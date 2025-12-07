@@ -124,5 +124,5 @@ curl -X POST -H "Content-Type: application/json" \
 -d '{"question": "qual a quantidade total?"}' \
 http://127.0.0.1:5000/test
 ```
-ngrok http http://127.0.0.1:5000 -> Inicia o Server
+ngrok http 5000 -> Inicia o Server
 python bot.py -> Inicia o Robo
