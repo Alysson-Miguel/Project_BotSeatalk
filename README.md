@@ -51,6 +51,7 @@ Clone o repositório e instale as bibliotecas Python necessárias:
 git clone <URL_DO_REPOSITORIO> # (simulado)
 cd shopee_seatalk_bot
 pip install -r requirements.txt
+pip install --upgrade -r requirements.txt
 ```
 
 ### 3. Configuração do SeaTalk

@@ -1,8 +1,29 @@
-flask==3.0.0
+# Web Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.2
+
+# HTTP Client
 requests==2.31.0
-gspread==6.1.0
-google-auth==2.25.0
+
+# Google Sheets Integration
+gspread==5.12.4
+google-auth==2.25.2
 google-auth-oauthlib==1.2.0
 google-auth-httplib2==0.2.0
-pandas==2.1.4
+
+# AI/LLM Integration (Groq)
+groq==0.4.2
+
+# Environment Variables
 python-dotenv==1.0.0
+
+# Date/Time Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Production Server (opcional)
+gunicorn==21.2.0
