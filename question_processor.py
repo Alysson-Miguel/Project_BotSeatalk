@@ -2,9 +2,12 @@
 Processador de perguntas e comandos do usuário
 """
 import re
+import logging
 from typing import Optional
 from data_analyzer import ShopeeDataAnalyzer
 from sheets_client import SheetsClient
+
+logger = logging.getLogger(__name__)
 
 
 class QuestionProcessor:
@@ -25,19 +28,36 @@ class QuestionProcessor:
     def _load_data(self):
         """Carrega dados do Google Sheets"""
         try:
+            logger.info("📊 Iniciando carregamento de dados do Sheets...")
             df = self.sheets_client.get_all_data()
-            if not df.empty:
-                self.analyzer = ShopeeDataAnalyzer(df)
-            else:
+            
+            if df is None:
+                logger.error("❌ get_all_data() retornou None")
                 self.analyzer = None
+                self.is_ready = False
+                return
+            
+            logger.info(f"📋 DataFrame recebido: {df.shape[0]} linhas, {df.shape[1]} colunas")
+            
+            if df.empty:
+                logger.warning("⚠️ DataFrame está vazio!")
+                self.analyzer = None
+                self.is_ready = False
+                return
+            
+            logger.info("🔧 Criando ShopeeDataAnalyzer...")
+            self.analyzer = ShopeeDataAnalyzer(df)
+            self.is_ready = True
+            logger.info("✅ Dados carregados com sucesso!")
+            
         except Exception as e:
-            print(f"Erro ao carregar dados: {str(e)}")
+            logger.error(f"❌ Erro ao carregar dados: {str(e)}", exc_info=True)
             self.analyzer = None
-        finally:
-            self.is_ready = self.analyzer is not None
+            self.is_ready = False
     
     def refresh_data(self):
         """Recarrega os dados do Google Sheets"""
+        logger.info("🔄 Recarregando dados...")
         self._load_data()
         return "✅ Dados recarregados com sucesso!" if self.is_ready else "❌ Falha ao recarregar dados."
     
@@ -52,12 +72,13 @@ class QuestionProcessor:
             Resposta formatada
         """
         if not self.is_ready:
+            logger.warning(f"⚠️ Processador não está pronto. Analyzer: {self.analyzer is not None}")
             return "❌ Não foi possível carregar os dados. Verifique a configuração do Google Sheets."
         
         question_lower = question.lower().strip()
         
         # Comandos de ajuda
-        if any(cmd in question_lower for cmd in ['help', 'comandos']):
+        if any(cmd in question_lower for cmd in ['help', 'comandos', 'ajuda']):
             return self._get_help_message()
         
         # Listar colunas disponíveis
@@ -145,6 +166,7 @@ _"buscar notebook"_
             else:
                 return f"📦 **Quantidade total geral:** {total:,.0f}"
         except Exception as e:
+            logger.error(f"Erro em _get_total_quantity: {e}", exc_info=True)
             return f"❌ Erro ao calcular quantidade total: {str(e)}"
     
     def _get_weighted_average(self, question: str) -> str:
@@ -163,6 +185,7 @@ _"buscar notebook"_
             avg = self.analyzer.get_weighted_average(value_col, weight_col)
             return f"📊 **Média ponderada de '{value_col}' por '{weight_col}':** {avg:,.2f}"
         except Exception as e:
+            logger.error(f"Erro em _get_weighted_average: {e}", exc_info=True)
             return f"❌ Erro ao calcular média ponderada: {str(e)}"
     
     def _get_top_products(self, question: str) -> str:
@@ -178,6 +201,7 @@ _"buscar notebook"_
                 response += f"{idx + 1}. **{row[product_col]}**: {row[qty_col]:,.0f}\n"
             return response
         except Exception as e:
+            logger.error(f"Erro em _get_top_products: {e}", exc_info=True)
             return f"❌ Erro ao obter top produtos: {str(e)}"
     
     def _search_product(self, question: str) -> str:
@@ -198,6 +222,7 @@ _"buscar notebook"_
                 response += f"_Mostrando 5 de {len(results)} registros:_\n```\n" + results.head(5).to_string() + "\n```"
             return response
         except Exception as e:
+            logger.error(f"Erro em _search_product: {e}", exc_info=True)
             return f"❌ Erro ao buscar produto: {str(e)}"
     
     def _get_statistics(self, question: str) -> str:
@@ -217,6 +242,7 @@ _"buscar notebook"_
             response += f"• **Contagem:** {stats['contagem']}\n"
             return response
         except Exception as e:
+            logger.error(f"Erro em _get_statistics: {e}", exc_info=True)
             return f"❌ Erro ao calcular estatísticas: {str(e)}"
     
     def _get_product_summary(self) -> str:
@@ -233,6 +259,7 @@ _"buscar notebook"_
                 response += f"\n_... e mais {len(summary) - 10} produtos_"
             return response
         except Exception as e:
+            logger.error(f"Erro em _get_product_summary: {e}", exc_info=True)
             return f"❌ Erro ao gerar resumo: {str(e)}"
     
     def _get_default_response(self, question: str) -> str:

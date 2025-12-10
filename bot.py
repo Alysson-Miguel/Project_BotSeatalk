@@ -11,9 +11,9 @@ from sheets_client import SheetsClient
 from question_processor import QuestionProcessor
 from groq_client import GroqClient
 
-# ============================================================
+# ==================================
 # CONFIG LOGGING COM PRETTY PRINT
-# ============================================================
+# ==================================
 class PrettyFormatter(logging.Formatter):
     def format(self, record):
         if isinstance(record.msg, dict):
@@ -30,9 +30,9 @@ for handler in logging.getLogger().handlers:
 
 logger = logging.getLogger(__name__)
 
-# ============================================================
+# =====================================
 # INICIALIZAÇÃO
-# ============================================================
+# =====================================
 app = Flask(__name__)
 seatalk_client = SeaTalkClient()
 sheets_client = None
@@ -42,7 +42,9 @@ groq_client = None
 def initialize_clients():
     global sheets_client, question_processor, groq_client
     try:
-        logger.info("Inicializando clientes...")
+        logger.info("=" * 60)
+        logger.info("🚀 INICIALIZANDO CLIENTES")
+        logger.info("=" * 60)
         
         # Groq (obrigatório)
         if Config.GROQ_API_KEY:
@@ -56,14 +58,46 @@ def initialize_clients():
         try:
             logger.info("Inicializando Google Sheets client...")
             sheets_client = SheetsClient()
+            logger.info(f"📊 Sheets client criado: {sheets_client is not None}")
             
             logger.info("Inicializando Question Processor...")
             question_processor = QuestionProcessor(sheets_client)
-            logger.info("✅ Sheets e Processor inicializados!")
+            logger.info(f"🔍 Question Processor criado: {question_processor is not None}")
+            
+            # === DIAGNÓSTICO DETALHADO ===
+            logger.info("=" * 60)
+            logger.info("📊 DIAGNÓSTICO DO QUESTION PROCESSOR")
+            logger.info("=" * 60)
+            logger.info(f"⏳ is_ready: {question_processor.is_ready}")
+            logger.info(f"📈 analyzer existe: {question_processor.analyzer is not None}")
+            
+            if question_processor.analyzer:
+                if hasattr(question_processor.analyzer, 'df'):
+                    df = question_processor.analyzer.df
+                    logger.info(f"📋 DataFrame existe: {df is not None}")
+                    if df is not None:
+                        logger.info(f"📊 Shape: {df.shape}")
+                        logger.info(f"📊 Colunas: {list(df.columns)}")
+                        logger.info(f"📊 Primeiras linhas:\n{df.head(2)}")
+                else:
+                    logger.warning("⚠️ Analyzer não tem atributo 'df'")
+            else:
+                logger.error("❌ Analyzer é None!")
+            
+            logger.info("=" * 60)
+            
+            if question_processor.is_ready:
+                logger.info("✅ Sheets e Processor PRONTOS!")
+            else:
+                logger.error("❌ Processor NÃO está pronto!")
+                
         except Exception as e:
-            logger.warning(f"⚠️ Sheets não disponível: {str(e)}")
+            logger.error(f"❌ Erro ao inicializar Sheets: {str(e)}", exc_info=True)
+            logger.error(f"❌ Stack trace completo:", exc_info=True)
         
+        logger.info("=" * 60)
         logger.info("✅ Sistema inicializado!")
+        logger.info("=" * 60)
         return True
     except Exception as e:
         logger.error(f"❌ Erro ao inicializar clientes: {str(e)}", exc_info=True)
@@ -74,47 +108,43 @@ def initialize_clients():
 # ============================================================
 @app.route('/health', methods=['GET'])
 def health_check():
+    processor_ready = question_processor.is_ready if question_processor else False
     return jsonify({
         'status': 'ok',
         'message': 'Bot SeaTalk está funcionando',
-        'ai_enabled': groq_client is not None
+        'ai_enabled': groq_client is not None,
+        'sheets_enabled': sheets_client is not None,
+        'processor_ready': processor_ready
     }), 200
 
 @app.route('/callback', methods=['POST'])
 def callback():
     try:
-        # Log do request completo
         logger.info("=" * 60)
         logger.info("📨 CALLBACK RECEBIDO")
         logger.info("=" * 60)
         
-        # Log dos headers
-        logger.info("Headers:")
-        for key, value in request.headers.items():
-            logger.info(f"  {key}: {value}")
+        # Verifica se é realmente JSON
+        if not request.is_json:
+            logger.error(f"❌ Não é JSON! Content-Type: {request.content_type}")
+            logger.error(f"Raw data: {request.get_data(as_text=True)}")
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
         
-        # Log do body raw
-        raw_data = request.get_data(as_text=True)
-        logger.info(f"\nBody RAW:\n{raw_data}")
-        
-        # Tentar parsear JSON
+        # Força parsing do JSON
         try:
-            data = request.json
-            if not data:
-                logger.error("❌ Data vazio ou None")
-                return jsonify({'error': 'Empty data'}), 400
-            
-            logger.info(f"\nBody PARSED:\n{pprint.pformat(data, indent=2)}")
-        except Exception as json_error:
-            logger.error(f"❌ Erro ao parsear JSON: {json_error}")
-            return jsonify({'error': 'Invalid JSON'}), 400
+            data = request.get_json(force=True)
+            #logger.info(f"📦 Dados recebidos:\n{pprint.pformat(data)}")
+        except Exception as e:
+            logger.error(f"❌ Erro ao parsear JSON: {e}")
+            logger.error(f"Raw data: {request.get_data(as_text=True)}")
+            return jsonify({'error': 'Invalid JSON format'}), 400
 
         # Challenger (verificação do webhook)
         if data.get('event_type') == 'event_verification':
             challenge = data.get('event', {}).get('seatalk_challenge')
             logger.info(f"🔐 Challenge recebido: {challenge}")
             if challenge:
-                response = {'seatalk_challenge': challenge}
+                response = {'status': 'ok'}
                 logger.info(f"✅ Respondendo challenge: {response}")
                 return jsonify(response), 200
             logger.error("❌ Challenge não encontrado no evento")
@@ -147,18 +177,36 @@ def callback():
 # ============================================================
 def process_direct_message(event: dict):
     try:
+        logger.info(f"📦 Event completo:\n{pprint.pformat(event)}")
+        
         employee_code = event.get('employee_code')
+        
+        # Tenta pegar o sender_id também
+        sender = event.get('sender', {})
+        sender_id = sender.get('seatalk_id')
+        
         message_text = event.get('message', {}).get('text', {}).get('content', '')
 
-        if not employee_code or not message_text:
-            logger.warning("⚠️ Mensagem direta incompleta")
+        logger.info(f"👤 Employee Code: {employee_code}")
+        logger.info(f"👤 Sender ID: {sender_id}")
+        logger.info(f"💬 Mensagem: {message_text}")
+
+        if not message_text:
+            logger.warning("⚠️ Mensagem direta sem texto")
             return
 
-        logger.info(f"💬 [DIRETO] De: {employee_code}")
+        # Tenta usar sender_id se employee_code não funcionar
+        target_id = employee_code or sender_id
+        
+        if not target_id:
+            logger.error("❌ Não foi possível identificar o destinatário!")
+            return
+
+        logger.info(f"💬 [DIRETO] De: {target_id}")
         logger.info(f"💬 [DIRETO] Mensagem: {message_text}")
         
         response = process_question(message_text)
-        send_direct_response(employee_code, response)
+        send_direct_response(target_id, response)
 
     except Exception as e:
         logger.error(f"❌ Erro ao processar mensagem direta: {str(e)}", exc_info=True)
@@ -182,7 +230,7 @@ def process_group_message(event: dict):
             return
 
         logger.info(f"👥 [GRUPO] ID: {group_id}")
-        logger.info(f"👥 [GRUPO] De: {employee_code}")
+        logger.info(f"👥 [GRUPO] De: {employee_code} (Sender: {sender_id})")
         logger.info(f"👥 [GRUPO] Mensagem: {message_text}")
 
         response = process_question(message_text)
@@ -196,31 +244,41 @@ def process_group_message(event: dict):
 # ============================================================
 def process_question(message_text: str) -> str:
     try:
+        logger.info(f"🤔 Processando pergunta: '{message_text}'")
+        logger.info(f"📊 Processor ready: {question_processor.is_ready if question_processor else 'N/A'}")
+        
         use_ai_for_complex = groq_client and groq_client.should_use_ai(message_text)
 
         if question_processor and question_processor.is_ready:
+            logger.info("✅ Usando question_processor")
             response = question_processor.process_question(message_text)
             if should_fallback_to_ai(response) or use_ai_for_complex:
                 response = generate_ai_response(message_text, response)
         elif question_processor:
+            logger.warning("⚠️ Processor existe mas não está pronto")
             response = "⌛ Ainda estou carregando os dados. Tente novamente em instantes."
         else:
+            logger.error("❌ Processor não existe")
             response = "❌ Bot não está configurado corretamente."
 
+        logger.info(f"📤 Resposta gerada: {response[:100]}...")
         return response
 
     except Exception as e:
         logger.error(f"❌ Erro ao processar pergunta: {str(e)}", exc_info=True)
         return f"❌ Erro ao processar sua mensagem: {str(e)}"
-
-def send_direct_response(employee_code: str, message: str):
+ 
+def send_direct_response(target_id: str, message: str):
     try:
-        logger.info(f"📤 Enviando resposta para {employee_code}...")
+        logger.info(f"📤 Enviando resposta para {target_id}...")
+        logger.info(f"📝 Mensagem: {message[:100]}...")
+        
         if any(m in message for m in ['**', '```', '•', '#', '\n']):
-            result = seatalk_client.send_markdown_message(employee_code, message)
+            result = seatalk_client.send_markdown_message(target_id, message)
         else:
-            result = seatalk_client.send_message(employee_code, message)
-        logger.info(f"✅ Resposta enviada:\n{pprint.pformat(result)}")
+            result = seatalk_client.send_message(target_id, message)
+        
+        logger.info(f"✅ Resultado do envio:\n{pprint.pformat(result)}")
     except Exception as e:
         logger.error(f"❌ Erro ao enviar resposta direta: {str(e)}", exc_info=True)
 
@@ -243,7 +301,7 @@ def generate_ai_response(question: str, previous: str = None) -> str:
     if not groq_client:
         return previous or "❌ IA não disponível."
     try:
-        if question_processor and question_processor.analyzer.df is not None:
+        if question_processor and question_processor.analyzer and question_processor.analyzer.df is not None:
             df = question_processor.analyzer.df
             summary = f"Colunas: {', '.join(df.columns)}\nRegistros: {len(df)}"
             sample = df.head(3).to_string()
