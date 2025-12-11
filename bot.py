@@ -64,25 +64,26 @@ def initialize_clients():
             question_processor = QuestionProcessor(sheets_client)
             logger.info(f"🔍 Question Processor criado: {question_processor is not None}")
             
-            # === DIAGNÓSTICO DETALHADO ===
-            logger.info("=" * 60)
-            logger.info("📊 DIAGNÓSTICO DO QUESTION PROCESSOR")
-            logger.info("=" * 60)
-            logger.info(f"⏳ is_ready: {question_processor.is_ready}")
-            logger.info(f"📈 analyzer existe: {question_processor.analyzer is not None}")
-            
-            if question_processor.analyzer:
-                if hasattr(question_processor.analyzer, 'df'):
-                    df = question_processor.analyzer.df
-                    logger.info(f"📋 DataFrame existe: {df is not None}")
-                    if df is not None:
-                        logger.info(f"📊 Shape: {df.shape}")
-                        logger.info(f"📊 Colunas: {list(df.columns)}")
-                        logger.info(f"📊 Primeiras linhas:\n{df.head(2)}")
-                else:
-                    logger.warning("⚠️ Analyzer não tem atributo 'df'")
+            # === DIAGNÓSTICO DETALHADO DOS ANALYZERS ===
+            logger.info("🧪 Verificando analyzer_main:")
+            if question_processor.analyzer_main:
+                df = question_processor.analyzer_main.df
+                logger.info(f"📋 DataFrame MAIN existe: {df is not None}")
+                if df is not None:
+                    logger.info(f"📊 Shape: {df.shape}")
+                    logger.info(f"📊 Colunas: {list(df.columns)}")
             else:
-                logger.error("❌ Analyzer é None!")
+                logger.error("❌ analyzer_main é None!")
+
+            logger.info("🧪 Verificando analyzer_secondary:")
+            if question_processor.analyzer_secondary:
+                df2 = question_processor.analyzer_secondary.df
+                logger.info(f"📋 DataFrame SECONDARY existe: {df2 is not None}")
+                if df2 is not None:
+                    logger.info(f"📊 Shape: {df2.shape}")
+                    logger.info(f"📊 Colunas: {list(df2.columns)}")
+            else:
+                logger.warning("⚠️ analyzer_secondary é None!")
             
             logger.info("=" * 60)
             
@@ -301,14 +302,21 @@ def generate_ai_response(question: str, previous: str = None) -> str:
     if not groq_client:
         return previous or "❌ IA não disponível."
     try:
-        if question_processor and question_processor.analyzer and question_processor.analyzer.df is not None:
-            df = question_processor.analyzer.df
+        # Usa qualquer analyzer que existir
+        analyzer = None
+        if question_processor:
+            analyzer = question_processor.analyzer_main or question_processor.analyzer_secondary
+
+        if analyzer and analyzer.df is not None:
+            df = analyzer.df
             summary = f"Colunas: {', '.join(df.columns)}\nRegistros: {len(df)}"
             sample = df.head(3).to_string()
             response = groq_client.analyze_with_data(question, summary, sample)
         else:
             response = groq_client.generate_response(question)
+
         return f"🤖 {response}"
+
     except Exception as e:
         logger.error(f"❌ Erro IA: {str(e)}", exc_info=True)
         return previous or "❌ Erro IA."

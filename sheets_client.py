@@ -1,169 +1,205 @@
 """
-Cliente para integração com Google Sheets
+Cliente para interação com Google Sheets API
+Suporta leitura de múltiplas abas
 """
-import gspread
-from google.oauth2.service_account import Credentials
+import os
+import logging
+from typing import Optional, Dict
 import pandas as pd
-from typing import List, Dict, Optional
-from config import Config
+from google.oauth2.credentials import Credentials
+from google.oauth2.service_account import Credentials as ServiceAccountCredentials
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+logger = logging.getLogger(__name__)
 
 
 class SheetsClient:
-    """Cliente para leitura e processamento de dados do Google Sheets"""
+    """Cliente para interagir com Google Sheets"""
     
-    # Escopos necessários para acessar Google Sheets
-    SCOPES = [
-        'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/drive'
-    ]
+    # Escopos necessários para a API
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
     
-    def __init__(self):
-        self.credentials = None
-        self.client = None
-        self.spreadsheet = None
+    def __init__(self, credentials_path: str = 'credentials.json'):
+        """
+        Inicializa o cliente do Google Sheets
+        
+        Args:
+            credentials_path: Caminho para o arquivo de credenciais
+        """
+        self.credentials_path = credentials_path
+        self.service = None
+        self.spreadsheet_id = os.getenv('GOOGLE_SHEET_ID')
+        
+        # Dicionário de ranges/abas configuradas
+        self.sheet_ranges = {
+            'main': os.getenv('GOOGLE_SHEET_RANGE', 'Sheet1!A1:Z1000'),  # Aba principal
+            'secondary': os.getenv('GOOGLE_SHEET_RANGE_2', 'Sheet2!A1:Z1000'),  # Segunda aba
+        }
+        
         self._authenticate()
     
     def _authenticate(self):
-        """Autentica com Google Sheets usando Service Account"""
+        """Autentica com a API do Google Sheets"""
         try:
-            self.credentials = Credentials.from_service_account_file(
-                Config.GOOGLE_SHEETS_CREDENTIALS_FILE,
+            logger.info(f"🔐 Autenticando com Google Sheets...")
+            logger.info(f"📄 Arquivo de credenciais: {self.credentials_path}")
+            
+            if not os.path.exists(self.credentials_path):
+                raise FileNotFoundError(f"Arquivo de credenciais não encontrado: {self.credentials_path}")
+            
+            # Autenticação com Service Account
+            creds = ServiceAccountCredentials.from_service_account_file(
+                self.credentials_path, 
                 scopes=self.SCOPES
             )
-            self.client = gspread.authorize(self.credentials)
-            self.spreadsheet = self.client.open_by_key(Config.GOOGLE_SHEET_ID)
             
-        except FileNotFoundError:
-            raise Exception(
-                f"Arquivo de credenciais não encontrado: {Config.GOOGLE_SHEETS_CREDENTIALS_FILE}. "
-                "Por favor, baixe o arquivo JSON de credenciais do Google Cloud Console."
-            )
+            self.service = build('sheets', 'v4', credentials=creds)
+            logger.info("✅ Autenticação bem-sucedida!")
+            
         except Exception as e:
-            raise Exception(f"Erro ao autenticar com Google Sheets: {str(e)}")
+            logger.error(f"❌ Erro na autenticação: {str(e)}")
+            raise
     
-    def get_worksheet(self, sheet_name: str = None, index: int = 0):
+    def get_all_data(self, sheet_key: str = 'main') -> Optional[pd.DataFrame]:
         """
-        Obtém uma planilha específica
+        Busca todos os dados de uma aba específica
         
         Args:
-            sheet_name: Nome da planilha (opcional)
-            index: Índice da planilha (padrão: 0 - primeira planilha)
+            sheet_key: Chave da aba no dicionário sheet_ranges (default: 'main')
         
         Returns:
-            Worksheet: Objeto da planilha
+            DataFrame com os dados ou None em caso de erro
         """
         try:
-            if sheet_name:
-                return self.spreadsheet.worksheet(sheet_name)
-            else:
-                return self.spreadsheet.get_worksheet(index)
-        except Exception as e:
-            raise Exception(f"Erro ao obter planilha: {str(e)}")
-    
-    def get_all_data(self, sheet_name: str = None) -> pd.DataFrame:
-        """
-        Obtém todos os dados de uma planilha como DataFrame
-        
-        Args:
-            sheet_name: Nome da planilha (opcional, usa primeira se não especificado)
-        
-        Returns:
-            pd.DataFrame: Dados da planilha
-        """
-        try:
-            worksheet = self.get_worksheet(sheet_name)
-            data = worksheet.get_all_records()
+            range_name = self.sheet_ranges.get(sheet_key)
             
-            if not data:
+            if not range_name:
+                logger.error(f"❌ Chave '{sheet_key}' não encontrada em sheet_ranges")
+                logger.error(f"   Chaves disponíveis: {list(self.sheet_ranges.keys())}")
+                return None
+            
+            logger.info(f"📊 Buscando dados da aba: {sheet_key}")
+            logger.info(f"📍 Range: {range_name}")
+            logger.info(f"🆔 Spreadsheet ID: {self.spreadsheet_id}")
+            
+            if not self.spreadsheet_id:
+                logger.error("❌ GOOGLE_SHEET_ID não configurado!")
+                return None
+            
+            # Buscar dados do Google Sheets
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            if not values:
+                logger.warning(f"⚠️ Nenhum dado encontrado na aba '{sheet_key}'")
                 return pd.DataFrame()
             
-            return pd.DataFrame(data)
+            # Converter para DataFrame
+            df = pd.DataFrame(values[1:], columns=values[0])
             
+            logger.info(f"✅ Dados carregados com sucesso!")
+            logger.info(f"   Aba: {sheet_key}")
+            logger.info(f"   Linhas: {len(df)}")
+            logger.info(f"   Colunas: {len(df.columns)}")
+            
+            return df
+            
+        except HttpError as e:
+            logger.error(f"❌ Erro HTTP ao acessar Google Sheets: {e}")
+            return None
         except Exception as e:
-            raise Exception(f"Erro ao ler dados da planilha: {str(e)}")
+            logger.error(f"❌ Erro ao buscar dados: {str(e)}")
+            logger.exception("Stack trace:")
+            return None
     
-    def get_data_range(self, range_name: str, sheet_name: str = None) -> List[List]:
+    def get_data_from_custom_range(self, range_name: str) -> Optional[pd.DataFrame]:
         """
-        Obtém dados de um intervalo específico
+        Busca dados de um range customizado
         
         Args:
-            range_name: Nome do intervalo (ex: 'A1:D10')
-            sheet_name: Nome da planilha (opcional)
+            range_name: Nome do range (ex: 'Sheet1!A1:D10')
         
         Returns:
-            List[List]: Dados do intervalo
+            DataFrame com os dados ou None em caso de erro
         """
         try:
-            worksheet = self.get_worksheet(sheet_name)
-            return worksheet.get(range_name)
+            logger.info(f"📊 Buscando dados do range customizado: {range_name}")
             
-        except Exception as e:
-            raise Exception(f"Erro ao ler intervalo da planilha: {str(e)}")
-    
-    def list_worksheets(self) -> List[str]:
-        """
-        Lista todas as planilhas disponíveis
-        
-        Returns:
-            List[str]: Nomes das planilhas
-        """
-        try:
-            worksheets = self.spreadsheet.worksheets()
-            return [ws.title for ws in worksheets]
+            if not self.spreadsheet_id:
+                logger.error("❌ GOOGLE_SHEET_ID não configurado!")
+                return None
             
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name
+            ).execute()
+            
+            values = result.get('values', [])
+            
+            if not values:
+                logger.warning(f"⚠️ Nenhum dado encontrado no range '{range_name}'")
+                return pd.DataFrame()
+            
+            df = pd.DataFrame(values[1:], columns=values[0])
+            
+            logger.info(f"✅ Dados do range customizado carregados!")
+            logger.info(f"   Linhas: {len(df)}")
+            logger.info(f"   Colunas: {len(df.columns)}")
+            
+            return df
+            
+        except HttpError as e:
+            logger.error(f"❌ Erro HTTP ao acessar range: {e}")
+            return None
         except Exception as e:
-            raise Exception(f"Erro ao listar planilhas: {str(e)}")
+            logger.error(f"❌ Erro ao buscar range customizado: {str(e)}")
+            logger.exception("Stack trace:")
+            return None
     
-    def search_data(self, query: str, sheet_name: str = None) -> List[Dict]:
+    def add_sheet_range(self, key: str, range_name: str):
         """
-        Busca dados na planilha que correspondam à query
+        Adiciona um novo range/aba ao dicionário
         
         Args:
-            query: Texto a ser buscado
-            sheet_name: Nome da planilha (opcional)
+            key: Chave identificadora
+            range_name: Range no formato 'Sheet!A1:Z100'
+        """
+        self.sheet_ranges[key] = range_name
+        logger.info(f"✅ Range '{key}' adicionado: {range_name}")
+    
+    def list_available_sheets(self) -> Dict[str, str]:
+        """
+        Lista todas as abas/ranges disponíveis
         
         Returns:
-            List[Dict]: Lista de células encontradas com suas posições
+            Dicionário com as abas configuradas
         """
-        try:
-            worksheet = self.get_worksheet(sheet_name)
-            cells = worksheet.findall(query)
-            
-            results = []
-            for cell in cells:
-                results.append({
-                    'row': cell.row,
-                    'col': cell.col,
-                    'value': cell.value
-                })
-            
-            return results
-            
-        except Exception as e:
-            raise Exception(f"Erro ao buscar dados: {str(e)}")
+        return self.sheet_ranges.copy()
     
-    def get_column_data(self, column_name: str, sheet_name: str = None) -> List:
+    def test_connection(self) -> bool:
         """
-        Obtém todos os dados de uma coluna específica
-        
-        Args:
-            column_name: Nome da coluna
-            sheet_name: Nome da planilha (opcional)
+        Testa a conexão com o Google Sheets
         
         Returns:
-            List: Valores da coluna
+            True se conectado, False caso contrário
         """
         try:
-            df = self.get_all_data(sheet_name)
+            logger.info("🧪 Testando conexão com Google Sheets...")
             
-            if column_name not in df.columns:
-                raise ValueError(f"Coluna '{column_name}' não encontrada. Colunas disponíveis: {list(df.columns)}")
+            result = self.service.spreadsheets().get(
+                spreadsheetId=self.spreadsheet_id
+            ).execute()
             
-            return df[column_name].tolist()
+            title = result.get('properties', {}).get('title', 'Sem título')
+            logger.info(f"✅ Conexão OK! Planilha: {title}")
+            
+            return True
             
         except Exception as e:
-            raise Exception(f"Erro ao obter dados da coluna: {str(e)}")
-    
-    def refresh_connection(self):
-        """Reautentica e atualiza a conexão com Google Sheets"""
-        self._authenticate()
+            logger.error(f"❌ Falha na conexão: {str(e)}")
+            return False

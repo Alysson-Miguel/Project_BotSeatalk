@@ -1,11 +1,14 @@
 """
 Processador de perguntas e comandos do usuário
+Suporta múltiplas abas do Google Sheets
 """
 import re
 import logging
 from typing import Optional
+import pandas as pd
 from data_analyzer import ShopeeDataAnalyzer
 from sheets_client import SheetsClient
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -20,46 +23,158 @@ class QuestionProcessor:
         Args:
             sheets_client: Cliente do Google Sheets
         """
+        logger.info("🔧 Inicializando QuestionProcessor...")
+        
+        # Validação do sheets_client
+        if sheets_client is None:
+            logger.error("❌ sheets_client é None!")
+            raise ValueError("sheets_client não pode ser None")
+        
+        logger.info(f"✅ sheets_client recebido: {type(sheets_client)}")
+        
         self.sheets_client = sheets_client
-        self.analyzer = None
-        self.is_ready = False
+        
+        # Analyzers para diferentes abas
+        self.analyzer_main = None
+        self.analyzer_secondary = None
+        
+        # Status de prontidão
+        self.is_ready_main = False
+        self.is_ready_secondary = False
+        
+        logger.info("📊 Iniciando carregamento de dados...")
         self._load_data()
+        
+        logger.info(f"🏁 Inicialização concluída.")
+        logger.info(f"   Aba principal: {self.is_ready_main}")
+        logger.info(f"   Aba secundária: {self.is_ready_secondary}")
+    
+    # ======================================================================
+    #  Carregamento de dados
+    # ======================================================================
     
     def _load_data(self):
-        """Carrega dados do Google Sheets"""
+        """Carrega dados de todas as abas configuradas"""
+        # Carregar aba principal
+        self._load_main_data()
+        
+        # Carregar aba secundária
+        self._load_secondary_data()
+    
+    def _load_main_data(self):
+        """Carrega dados da aba principal"""
         try:
-            logger.info("📊 Iniciando carregamento de dados do Sheets...")
-            df = self.sheets_client.get_all_data()
+            logger.info("=" * 60)
+            logger.info("📊 CARREGANDO ABA PRINCIPAL")
+            logger.info("=" * 60)
             
-            if df is None:
-                logger.error("❌ get_all_data() retornou None")
-                self.analyzer = None
-                self.is_ready = False
+            df = self.sheets_client.get_all_data('main')
+            
+            if df is None or df.empty:
+                logger.error("❌ Aba principal: sem dados")
+                self.analyzer_main = None
+                self.is_ready_main = False
                 return
             
-            logger.info(f"📋 DataFrame recebido: {df.shape[0]} linhas, {df.shape[1]} colunas")
-            
-            if df.empty:
-                logger.warning("⚠️ DataFrame está vazio!")
-                self.analyzer = None
-                self.is_ready = False
-                return
-            
-            logger.info("🔧 Criando ShopeeDataAnalyzer...")
-            self.analyzer = ShopeeDataAnalyzer(df)
-            self.is_ready = True
-            logger.info("✅ Dados carregados com sucesso!")
+            logger.info(f"✅ Aba principal carregada: {df.shape[0]} linhas")
+            self.analyzer_main = ShopeeDataAnalyzer(df)
+            self.is_ready_main = True
             
         except Exception as e:
-            logger.error(f"❌ Erro ao carregar dados: {str(e)}", exc_info=True)
-            self.analyzer = None
-            self.is_ready = False
+            logger.error(f"❌ Erro ao carregar aba principal: {e}")
+            logger.exception("Stack trace:")
+            self.analyzer_main = None
+            self.is_ready_main = False
     
-    def refresh_data(self):
-        """Recarrega os dados do Google Sheets"""
-        logger.info("🔄 Recarregando dados...")
-        self._load_data()
-        return "✅ Dados recarregados com sucesso!" if self.is_ready else "❌ Falha ao recarregar dados."
+    def _load_secondary_data(self):
+        """Carrega dados da aba secundária"""
+        try:
+            logger.info("=" * 60)
+            logger.info("📊 CARREGANDO ABA SECUNDÁRIA")
+            logger.info("=" * 60)
+            
+            df = self.sheets_client.get_all_data('secondary')
+            
+            if df is None or df.empty:
+                logger.warning("⚠️ Aba secundária: sem dados (não é crítico)")
+                self.analyzer_secondary = None
+                self.is_ready_secondary = False
+                return
+            
+            logger.info(f"✅ Aba secundária carregada: {df.shape[0]} linhas")
+            self.analyzer_secondary = ShopeeDataAnalyzer(df)
+            self.is_ready_secondary = True
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Aba secundária não disponível: {e}")
+            self.analyzer_secondary = None
+            self.is_ready_secondary = False
+    
+    def refresh_data(self, sheet: str = 'all'):
+        """
+        Recarrega os dados do Google Sheets
+        
+        Args:
+            sheet: 'all', 'main' ou 'secondary'
+        """
+        logger.info(f"🔄 Recarregando dados: {sheet}")
+        
+        if sheet in ['all', 'main']:
+            self._load_main_data()
+        
+        if sheet in ['all', 'secondary']:
+            self._load_secondary_data()
+        
+        if sheet == 'all':
+            status = []
+            if self.is_ready_main:
+                status.append("✅ Aba principal OK")
+            else:
+                status.append("❌ Aba principal falhou")
+            
+            if self.is_ready_secondary:
+                status.append("✅ Aba secundária OK")
+            else:
+                status.append("⚠️ Aba secundária indisponível")
+            
+            return "\n".join(status)
+        
+        is_ready = self.is_ready_main if sheet == 'main' else self.is_ready_secondary
+        return f"✅ {sheet} recarregada!" if is_ready else f"❌ Falha ao recarregar {sheet}"
+    
+    @property
+    def is_ready(self):
+        """Sistema está pronto se pelo menos a aba principal estiver carregada"""
+        return self.is_ready_main
+
+    # ======================================================================
+    #  Método auxiliar — FORMATAÇÃO BONITA DA TABELA
+    # ======================================================================
+    
+    def _format_dataframe(self, df: pd.DataFrame) -> str:
+        """Formata o DataFrame em colunas alinhadas e limpas."""
+        if df is None or df.empty:
+            return "❌ DataFrame vazio ou inválido"
+
+        df = df.fillna("-")
+
+        # Ajusta larguras das colunas
+        col_widths = {
+            col: max(df[col].astype(str).map(len).max(), len(col))
+            for col in df.columns
+        }
+
+        header = "  ".join(col.ljust(col_widths[col]) for col in df.columns)
+        rows = "\n".join(
+            "  ".join(str(row[col]).ljust(col_widths[col]) for col in df.columns)
+            for _, row in df.iterrows()
+        )
+
+        return f"{header}\n{rows}"
+
+    # ======================================================================
+    #  Processamento principal das perguntas
+    # ======================================================================
     
     def process_question(self, question: str) -> str:
         """
@@ -72,7 +187,7 @@ class QuestionProcessor:
             Resposta formatada
         """
         if not self.is_ready:
-            logger.warning(f"⚠️ Processador não está pronto. Analyzer: {self.analyzer is not None}")
+            logger.warning(f"⚠️ Processador não está pronto.")
             return "❌ Não foi possível carregar os dados. Verifique a configuração do Google Sheets."
         
         question_lower = question.lower().strip()
@@ -81,13 +196,27 @@ class QuestionProcessor:
         if any(cmd in question_lower for cmd in ['help', 'comandos', 'ajuda']):
             return self._get_help_message()
         
+        # Status das abas
+        if any(cmd in question_lower for cmd in ['status', 'abas', 'sheets']):
+            return self._get_sheets_status()
+        
         # Listar colunas disponíveis
         if any(cmd in question_lower for cmd in ['colunas', 'columns', 'campos', 'fields']):
             return self._list_columns()
         
-        # Prévia dos dados
-        if any(cmd in question_lower for cmd in ['prévia', 'preview', 'mostrar dados', 'show data']):
+        # ===== COMANDOS PARA ABA PRINCIPAL =====
+        
+        # Prévia dos dados / Indicadores
+        if any(cmd in question_lower for cmd in ['!indicadores', '!indicador', '!performance', '!table']):
             return self._show_data_preview()
+        
+        # ===== COMANDOS PARA ABA SECUNDÁRIA =====
+        
+        # Prévia da aba secundária
+        if any(cmd in question_lower for cmd in ['!secundaria', '!secondary', '!aba2', '!sheet2']):
+            return self._show_secondary_data_preview()
+        
+        # ===== COMANDOS GERAIS =====
         
         # Quantidade total
         if any(word in question_lower for word in ['quantidade total', 'total de quantidade', 'soma quantidade']):
@@ -117,50 +246,116 @@ class QuestionProcessor:
         if any(word in question_lower for word in ['recarregar', 'atualizar', 'refresh', 'reload']):
             return self.refresh_data()
         
+        # ===== COMANDOS PARA ABA SECUNDÁRIA =====
+        if any(cmd in question_lower for cmd in ['!secundaria', '!secondary', '!aba2', '!sheet2', 'leftover']):
+            return self._show_secondary_data_preview()
+        
         # Se não reconhecer o comando
         return self._get_default_response(question)
     
-    # ---------------------- Métodos auxiliares ----------------------
+
+    # ======================================================================
+    #  Métodos auxiliares de resposta
+    # ======================================================================
     
     def _get_help_message(self) -> str:
         return """
 📋 **Comandos Disponíveis:**
 
-**Consultas de Dados:**
-• `quantidade total` - Mostra a quantidade total geral
-• `quantidade total [produto]` - Mostra quantidade de um produto específico
-• `top 10` ou `top 5` - Mostra os produtos com maior quantidade
-• `buscar [produto]` - Busca informações de um produto
-• `estatísticas [coluna]` - Mostra estatísticas de uma coluna
-• `resumo por produto` - Mostra resumo agrupado por produto
+**Consultas de Indicadores (Aba Principal):**
+• `!Indicadores` - Mostra todos os indicadores
+• `!Relatorio [Indicador]` - Resume o indicador
+
+**Consultas da Aba Secundária:**
+• `!Secundaria` - Mostra dados da segunda aba
+• `!Sheet2` - Alias para aba secundária
 
 **Informações:**
-• `colunas` - Lista todas as colunas disponíveis
-• `prévia` - Mostra as primeiras linhas dos dados
+• `!Ofensores` - Lista maiores ofensores
+• `!Fora do target` - Indicadores fora do target
+• `status` - Status de todas as abas
 
 **Utilitários:**
-• `recarregar` - Atualiza os dados do Google Sheets
+• `recarregar` - Atualiza dados do Google Sheets
+• `colunas` - Lista colunas disponíveis
 • `ajuda` - Mostra esta mensagem
 
 **Exemplo de uso:**
-_"quantidade total smartphone"_  
-_"top 10"_  
-_"buscar notebook"_
+_"!Indicadores"_  
+_"!Secundaria"_
+_"status"_
 """
     
+    def _get_sheets_status(self) -> str:
+        """Retorna o status de todas as abas"""
+        main_status = "✅ OK" if self.is_ready_main else "❌ Falhou"
+        secondary_status = "✅ OK" if self.is_ready_secondary else "⚠️ Indisponível"
+        
+        main_info = ""
+        if self.analyzer_main and self.is_ready_main:
+            df = self.analyzer_main.df
+            main_info = f" ({df.shape[0]} linhas, {df.shape[1]} colunas)"
+        
+        secondary_info = ""
+        if self.analyzer_secondary and self.is_ready_secondary:
+            df = self.analyzer_secondary.df
+            secondary_info = f" ({df.shape[0]} linhas, {df.shape[1]} colunas)"
+        
+        return f"""
+                    📊 **Status das Abas:**
+
+                    • **Aba Principal:** {main_status}{main_info}
+                    • **Aba Secundária:** {secondary_status}{secondary_info}
+
+                    Sistema: {"✅ Pronto" if self.is_ready else "❌ Não pronto"}
+                    """
+    
     def _list_columns(self) -> str:
-        columns = self.analyzer.get_column_names()
-        columns_list = "\n".join([f"• {col}" for col in columns])
-        return f"📊 **Colunas disponíveis:**\n\n{columns_list}"
+        """Lista colunas de ambas as abas"""
+        response = []
+        
+        if self.analyzer_main:
+            columns_main = self.analyzer_main.get_column_names()
+            columns_list = "\n".join([f"  • {col}" for col in columns_main])
+            response.append(f"📊 **Colunas da Aba Principal:**\n{columns_list}")
+        
+        if self.analyzer_secondary:
+            columns_sec = self.analyzer_secondary.get_column_names()
+            columns_list = "\n".join([f"  • {col}" for col in columns_sec])
+            response.append(f"\n📊 **Colunas da Aba Secundária:**\n{columns_list}")
+        
+        return "\n".join(response) if response else "❌ Nenhuma aba disponível"
     
     def _show_data_preview(self) -> str:
-        preview = self.analyzer.get_data_preview(5)
-        return f"📋 **Prévia dos dados (5 primeiras linhas):**\n\n```\n{preview.to_string()}\n```"
+        """Mostra prévia da aba principal"""
+        if not self.analyzer_main:
+            return "❌ Aba principal não disponível"
+        
+        df = self.analyzer_main.get_data_preview(24)
+        formatted = self._format_dataframe(df)
+        return f"📋 **Indicadores Performance SITE (Aba Principal)**\n```\n{formatted}\n```"
+    
+    def _show_secondary_data_preview(self) -> str:
+        """Mostra prévia da aba secundária"""
+        if not self.analyzer_secondary:
+            return "❌ Aba secundária não disponível. Configure GOOGLE_SHEET_RANGE_2 no .env"
+        
+        df = self.analyzer_secondary.get_data_preview(24)
+        formatted = self._format_dataframe(df)
+        ontem = datetime.now() - timedelta(days=1)
+        ontem_formatado = ontem.strftime("%d-%m-%y")
+        return f"📋 **Resumo Leftover {ontem_formatado}**\n```\n{formatted}\n```"
     
     def _get_total_quantity(self, question: str) -> str:
+        """Calcula quantidade total (usa aba principal por padrão)"""
+        analyzer = self.analyzer_main
+        
+        if not analyzer:
+            return "❌ Aba principal não disponível"
+        
         try:
             product_name = self._extract_product_name(question)
-            total = self.analyzer.get_total_quantity(product_name)
+            total = analyzer.get_total_quantity(product_name)
             if product_name:
                 return f"📦 **Quantidade total de '{product_name}':** {total:,.0f}"
             else:
@@ -170,94 +365,144 @@ _"buscar notebook"_
             return f"❌ Erro ao calcular quantidade total: {str(e)}"
     
     def _get_weighted_average(self, question: str) -> str:
+        analyzer = self.analyzer_main
+        if not analyzer:
+            return "❌ Aba principal não disponível"
+        
         try:
-            columns = self.analyzer.get_column_names()
+            columns = analyzer.get_column_names()
             value_col = None
             weight_col = None
+            
             for col in columns:
                 if col.lower() in question.lower():
                     if not value_col:
                         value_col = col
                     elif not weight_col:
                         weight_col = col
+            
             if not value_col or not weight_col:
-                return "❌ Por favor, especifique as colunas para calcular a média ponderada.\nExemplo: 'média ponderada de preço por quantidade'"
-            avg = self.analyzer.get_weighted_average(value_col, weight_col)
+                return "❌ Especifique as colunas para calcular a média ponderada.\nEx: 'média ponderada de preço por quantidade'"
+            
+            avg = analyzer.get_weighted_average(value_col, weight_col)
             return f"📊 **Média ponderada de '{value_col}' por '{weight_col}':** {avg:,.2f}"
+        
         except Exception as e:
             logger.error(f"Erro em _get_weighted_average: {e}", exc_info=True)
             return f"❌ Erro ao calcular média ponderada: {str(e)}"
     
     def _get_top_products(self, question: str) -> str:
+        analyzer = self.analyzer_main
+        if not analyzer:
+            return "❌ Aba principal não disponível"
+        
         try:
             n = self._extract_number(question) or 10
-            top_products = self.analyzer.get_top_products(n)
+            top_products = analyzer.get_top_products(n)
+            
             if top_products.empty:
                 return "❌ Nenhum produto encontrado."
+            
+            product_col = analyzer._find_product_column()
+            qty_col = [col for col in top_products.columns if 'quant' in col.lower()][0]
+            
             response = f"🏆 **Top {n} Produtos:**\n\n"
             for idx, row in top_products.iterrows():
-                product_col = self.analyzer._find_product_column()
-                qty_col = [col for col in top_products.columns if 'quant' in col.lower()][0]
                 response += f"{idx + 1}. **{row[product_col]}**: {row[qty_col]:,.0f}\n"
+            
             return response
+        
         except Exception as e:
             logger.error(f"Erro em _get_top_products: {e}", exc_info=True)
             return f"❌ Erro ao obter top produtos: {str(e)}"
     
     def _search_product(self, question: str) -> str:
+        analyzer = self.analyzer_main
+        if not analyzer:
+            return "❌ Aba principal não disponível"
+        
         try:
             product_name = self._extract_product_name(question)
+            
             if not product_name:
-                return "❌ Por favor, especifique o nome do produto a buscar.\nExemplo: 'buscar notebook'"
-            results = self.analyzer.search_product(product_name)
+                return "❌ Especifique o nome do produto.\nEx: 'buscar notebook'"
+            
+            results = analyzer.search_product(product_name)
+            
             if results.empty:
-                return f"❌ Nenhum produto encontrado com o termo '{product_name}'."
-            total_qty = results[[col for col in results.columns if 'quant' in col.lower()][0]].sum()
-            response = f"🔍 **Resultados para '{product_name}':**\n\n"
-            response += f"• **Total de registros:** {len(results)}\n"
-            response += f"• **Quantidade total:** {total_qty:,.0f}\n\n"
-            if len(results) <= 5:
-                response += "**Detalhes:**\n```\n" + results.to_string() + "\n```"
-            else:
-                response += f"_Mostrando 5 de {len(results)} registros:_\n```\n" + results.head(5).to_string() + "\n```"
+                return f"❌ Nenhum produto encontrado com '{product_name}'."
+            
+            qty_col = [col for col in results.columns if 'quant' in col.lower()][0]
+            total_qty = results[qty_col].sum()
+            
+            formatted = self._format_dataframe(results.head(5))
+            
+            response = (
+                f"🔍 **Resultados para '{product_name}':**\n\n"
+                f"• **Total de registros:** {len(results)}\n"
+                f"• **Quantidade total:** {total_qty:,.0f}\n\n"
+                f"```\n{formatted}\n```"
+            )
             return response
+        
         except Exception as e:
             logger.error(f"Erro em _search_product: {e}", exc_info=True)
             return f"❌ Erro ao buscar produto: {str(e)}"
     
     def _get_statistics(self, question: str) -> str:
+        analyzer = self.analyzer_main
+        if not analyzer:
+            return "❌ Aba principal não disponível"
+        
         try:
-            columns = self.analyzer.get_column_names()
+            columns = analyzer.get_column_names()
             column_name = next((col for col in columns if col.lower() in question.lower()), None)
+            
             if not column_name:
                 column_name = next(col for col in columns if 'quant' in col.lower())
-            stats = self.analyzer.get_statistics(column_name)
-            response = f"📊 **Estatísticas de '{column_name}':**\n\n"
-            response += f"• **Total:** {stats['total']:,.2f}\n"
-            response += f"• **Média:** {stats['média']:,.2f}\n"
-            response += f"• **Mediana:** {stats['mediana']:,.2f}\n"
-            response += f"• **Mínimo:** {stats['mínimo']:,.2f}\n"
-            response += f"• **Máximo:** {stats['máximo']:,.2f}\n"
-            response += f"• **Desvio Padrão:** {stats['desvio_padrão']:,.2f}\n"
-            response += f"• **Contagem:** {stats['contagem']}\n"
+            
+            stats = analyzer.get_statistics(column_name)
+            
+            response = (
+                f"📊 **Estatísticas de '{column_name}':**\n\n"
+                f"• **Total:** {stats['total']:,.2f}\n"
+                f"• **Média:** {stats['média']:,.2f}\n"
+                f"• **Mediana:** {stats['mediana']:,.2f}\n"
+                f"• **Mínimo:** {stats['mínimo']:,.2f}\n"
+                f"• **Máximo:** {stats['máximo']:,.2f}\n"
+                f"• **Desvio Padrão:** {stats['desvio_padrão']:,.2f}\n"
+                f"• **Contagem:** {stats['contagem']}\n"
+            )
+            
             return response
+        
         except Exception as e:
             logger.error(f"Erro em _get_statistics: {e}", exc_info=True)
             return f"❌ Erro ao calcular estatísticas: {str(e)}"
     
     def _get_product_summary(self) -> str:
+        analyzer = self.analyzer_main
+        if not analyzer:
+            return "❌ Aba principal não disponível"
+        
         try:
-            summary = self.analyzer.get_summary_by_product()
+            summary = analyzer.get_summary_by_product()
+            
             if summary.empty:
-                return "❌ Nenhum dado disponível para resumo."
+                return "❌ Nenhum dado disponível."
+            
+            product_col = analyzer._find_product_column()
+            qty_col = [col for col in summary.columns if 'quant' in col.lower()][0]
+            
             response = "📊 **Resumo por Produto:**\n\n"
             for idx, row in summary.head(10).iterrows():
-                product_col = self.analyzer._find_product_column()
-                qty_col = [col for col in summary.columns if 'quant' in col.lower()][0]
                 response += f"• **{row[product_col]}**: {row[qty_col]:,.0f}\n"
+            
             if len(summary) > 10:
                 response += f"\n_... e mais {len(summary) - 10} produtos_"
+            
             return response
+        
         except Exception as e:
             logger.error(f"Erro em _get_product_summary: {e}", exc_info=True)
             return f"❌ Erro ao gerar resumo: {str(e)}"
@@ -268,6 +513,10 @@ _"buscar notebook"_
 
 Digite **ajuda** para ver os comandos disponíveis.
 """
+    
+    # ======================================================================
+    # Métodos de extração
+    # ======================================================================
     
     def _extract_product_name(self, text: str) -> Optional[str]:
         keywords = ['quantidade', 'total', 'buscar', 'procurar', 'produto', 'de', 'do', 'da']
