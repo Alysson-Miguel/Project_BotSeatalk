@@ -247,7 +247,7 @@ class QuestionProcessor:
             return self.refresh_data()
         
         # ===== COMANDOS PARA ABA SECUNDÁRIA =====
-        if any(cmd in question_lower for cmd in ['!secundaria', '!secondary', '!aba2', '!sheet2', 'leftover']):
+        if any(cmd in question_lower for cmd in ['!secundaria', '!secondary', '!aba2', '!sheet2', '!Leftover']):
             return self._show_secondary_data_preview()
         
         # Se não reconhecer o comando
