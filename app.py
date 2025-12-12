@@ -10,6 +10,7 @@ from Functions.seatalk_client import SeaTalkClient
 from Functions.sheets_client import SheetsClient
 from Functions.question_processor import QuestionProcessor
 from AI.groq_client import GroqClient
+import os
 
 # ==================================
 # CONFIG LOGGING COM PRETTY PRINT
@@ -337,11 +338,17 @@ def main():
         logger.info("=" * 60)
         initialize_clients()
         logger.info("=" * 60)
-        logger.info(f"🌐 Servidor rodando em {Config.HOST}:{Config.PORT}")
+        
+        # Pega a porta do ambiente ou usa 5000 como padrão
+        port = int(os.environ.get('PORT', Config.PORT or 5000))
+        host = Config.HOST or '0.0.0.0'
+        
+        logger.info(f"🌐 Servidor rodando em {host}:{port}")
         logger.info("=" * 60)
+        
         app.run(
-            host=Config.HOST,
-            port=Config.PORT,
+            host=host,
+            port=port,
             debug=Config.DEBUG
         )
     except Exception as e:
