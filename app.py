@@ -340,7 +340,7 @@ def main():
         logger.info("=" * 60)
         
         # Pega a porta do ambiente ou usa 5000 como padrão
-        port = int(os.environ.get('PORT', Config.PORT or 5000))
+        port = int(os.environ.get('PORT', Config.PORT or 10000))
         host = Config.HOST or '0.0.0.0'
         
         logger.info(f"🌐 Servidor rodando em {host}:{port}")

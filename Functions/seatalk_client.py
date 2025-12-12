@@ -250,6 +250,23 @@ def callback():
         else:
             return jsonify({"error": "invalid token"}), 403
 
+    # Mensagem privada
+    if data.get("event_type") == "message_from_bot_subscriber":
+        event = data["event"]
+
+        sender_id = event["sender"]["employee_code"]
+        texto = event["text"]
+
+        print(f"📩 Mensagem privada de {sender_id}: {texto}")
+
+        resposta = f"Recebi sua mensagem: {texto}"
+
+        client = SeaTalkClient()
+        result = client.send_message(sender_id, resposta)
+
+        print("Resposta enviada:", result)
+        return jsonify({"status": "OK"})
+
     # Mensagem mencionada em grupo
     if data.get("event_type") == "new_mentioned_message_received_from_group_chat":
         event = data["event"]
