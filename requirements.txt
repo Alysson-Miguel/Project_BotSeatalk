@@ -20,6 +20,7 @@ groq==0.4.2
 
 # Environment Variables
 python-dotenv==1.0.0
+setuptools>=65.0.0
 
 # Date/Time Utilities
 python-dateutil==2.8.2
