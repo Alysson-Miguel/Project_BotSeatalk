@@ -6,10 +6,10 @@ import logging
 import pprint
 import json
 from config import Config
-from seatalk_client import SeaTalkClient
-from sheets_client import SheetsClient
-from question_processor import QuestionProcessor
-from groq_client import GroqClient
+from Functions.seatalk_client import SeaTalkClient
+from Functions.sheets_client import SheetsClient
+from Functions.question_processor import QuestionProcessor
+from AI.groq_client import GroqClient
 
 # ==================================
 # CONFIG LOGGING COM PRETTY PRINT
@@ -59,6 +59,13 @@ def initialize_clients():
             logger.info("Inicializando Google Sheets client...")
             sheets_client = SheetsClient()
             logger.info(f"📊 Sheets client criado: {sheets_client is not None}")
+            
+            logger.info("➕ Registrando aba de lógica dos indicadores...")
+            sheets_client.add_sheet_range(
+                key="logica",
+                range_name="Logica indicadores!A1:B29"
+            )
+            logger.info("✅ Aba 'logica' registrada!")
             
             logger.info("Inicializando Question Processor...")
             question_processor = QuestionProcessor(sheets_client)

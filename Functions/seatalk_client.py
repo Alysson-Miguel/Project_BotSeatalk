@@ -6,6 +6,7 @@ import logging
 from typing import Dict
 from flask import Flask, request, jsonify
 from config import Config
+from time import sleep
 
 logger = logging.getLogger(__name__)
 
@@ -120,26 +121,56 @@ class SeaTalkClient:
             logger.error(f"❌ Erro na requisição: {e}", exc_info=True)
             return {'error': str(e)}
 
+ # ============================================================
+    #  QUEBRAR MENSAGENS GRANDES (AGORA CORRETO)
+    # ============================================================
+    def split_message(self, text, limit=1100):
+        parts = []
+        while len(text) > limit:
+            cut = text.rfind("\n", 0, limit)
+            if cut == -1:
+                cut = limit
+            parts.append(text[:cut])
+            text = text[cut:]
+        parts.append(text)
+        return parts
+
+
     # ============================================================
     #  ENVIAR TEXTO DIRETO
     # ============================================================
     def send_message(self, employee_code: str, message: str):
         token = self.get_bot_access_token()
-        
-        # URL CORRETA - Verifique na documentação do SeaTalk!
+
+        parts = self.split_message(message, limit=1100)
+
         url = "https://openapi.seatalk.io/messaging/v2/single_chat"
-        
-        payload = {
-            "employee_code": employee_code,
-            "message": {
-                "tag": "text",
-                "text": {
-                    "content": message
+        results = []
+
+        for part in parts:
+            payload = {
+                "employee_code": employee_code,
+                "message": {
+                    "tag": "text",
+                    "text": {
+                        "content": part
+                    }
                 }
             }
+
+            result = self._make_request(url, payload, token)
+            results.append(result)
+
+            # Agora correto
+            sleep(0.4)
+
+        return {
+            "status": "ok",
+            "messages_sent": len(parts),
+            "details": results
         }
-        
-        return self._make_request(url, payload, token)
+
+
 
     # ============================================================
     #  ENVIAR MARKDOWN
@@ -163,27 +194,43 @@ class SeaTalkClient:
         return self._make_request(url, payload, token)
 
     # ============================================================
-    #  ENVIAR MENSAGEM EM GRUPO
+    #  ENVIAR MENSAGEM EM GRUPO (AGORA COM SPLIT)
     # ============================================================
     def send_group_message(self, group_id: str, message_id: str, message: str, sender_id: str):
         token = self.get_bot_access_token()
-        
-        url = "https://openapi.seatalk.io/messaging/v2/group_chat"
-        
-        content = f"<mention-tag target=\"seatalk://user?id={sender_id}\"/>{message}"
 
-        payload = {
-            "group_id": group_id,
-            "quoted_message_id": message_id,
-            "message": {
-                "tag": "text",
-                "text": {
-                    "content": content
+        url = "https://openapi.seatalk.io/messaging/v2/group_chat"
+
+        mention = f"<mention-tag target=\"seatalk://user?id={sender_id}\"/> "
+        limit = 1100 - len(mention)
+
+        # divide mensagem
+        parts = self.split_message(message, limit=limit)
+
+        results = []
+
+        for part in parts:
+            payload = {
+                "group_id": group_id,
+                "quoted_message_id": message_id,
+                "message": {
+                    "tag": "text",
+                    "text": {
+                        "content": mention + part
+                    }
                 }
             }
-        }
 
-        return self._make_request(url, payload, token)
+            result = self._make_request(url, payload, token)
+            results.append(result)
+
+            sleep(0.4)  # evita flood
+
+        return {
+            "status": "ok",
+            "messages_sent": len(parts),
+            "details": results
+        }
 
 
 # ============================================================

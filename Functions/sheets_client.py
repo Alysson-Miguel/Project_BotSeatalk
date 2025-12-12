@@ -160,6 +160,28 @@ class SheetsClient:
             logger.error(f"❌ Erro ao buscar range customizado: {str(e)}")
             logger.exception("Stack trace:")
             return None
+        
+    def get_cell_value(self, range_name: str):
+        """Lê uma única célula sem converter para DataFrame"""
+        try:
+            logger.info(f"📌 Buscando célula: {range_name}")
+
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=self.spreadsheet_id,
+                range=range_name
+            ).execute()
+
+            values = result.get("values", [])
+
+            if not values or not values[0]:
+                logger.warning(f"⚠️ Célula {range_name} está vazia ou não encontrada.")
+                return None
+
+            return values[0][0]
+
+        except Exception as e:
+            logger.error(f"❌ Erro ao buscar célula {range_name}: {e}")
+            return None
     
     def add_sheet_range(self, key: str, range_name: str):
         """
@@ -203,3 +225,5 @@ class SheetsClient:
         except Exception as e:
             logger.error(f"❌ Falha na conexão: {str(e)}")
             return False
+        
+

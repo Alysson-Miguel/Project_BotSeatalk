@@ -6,8 +6,8 @@ import re
 import logging
 from typing import Optional
 import pandas as pd
-from data_analyzer import ShopeeDataAnalyzer
-from sheets_client import SheetsClient
+from Functions.data_analyzer import ShopeeDataAnalyzer
+from Functions.sheets_client import SheetsClient
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class QuestionProcessor:
             logger.error("❌ sheets_client é None!")
             raise ValueError("sheets_client não pode ser None")
         
-        logger.info(f"✅ sheets_client recebido: {type(sheets_client)}")
+        logger.info(f"✅ sheets_client recebido.") #: {type(sheets_client)}
         
         self.sheets_client = sheets_client
         
@@ -192,13 +192,13 @@ class QuestionProcessor:
         
         question_lower = question.lower().strip()
         
+        explicacao = self.explicar_indicador(question)
+        if explicacao:
+            return explicacao
+        
         # Comandos de ajuda
         if any(cmd in question_lower for cmd in ['help', 'comandos', 'ajuda']):
             return self._get_help_message()
-        
-        # Status das abas
-        if any(cmd in question_lower for cmd in ['status', 'abas', 'sheets']):
-            return self._get_sheets_status()
         
         # Listar colunas disponíveis
         if any(cmd in question_lower for cmd in ['colunas', 'columns', 'campos', 'fields']):
@@ -213,43 +213,14 @@ class QuestionProcessor:
         # ===== COMANDOS PARA ABA SECUNDÁRIA =====
         
         # Prévia da aba secundária
-        if any(cmd in question_lower for cmd in ['!secundaria', '!secondary', '!aba2', '!sheet2']):
+        if any(cmd in question_lower for cmd in ['!Leftover', '!sobras', '!leftover']): # Ainda da mais uma palavra pra leftover
             return self._show_secondary_data_preview()
         
         # ===== COMANDOS GERAIS =====
-        
-        # Quantidade total
-        if any(word in question_lower for word in ['quantidade total', 'total de quantidade', 'soma quantidade']):
-            return self._get_total_quantity(question)
-        
-        # Média ponderada
-        if any(word in question_lower for word in ['média ponderada', 'weighted average', 'ponderada']):
-            return self._get_weighted_average(question)
-        
-        # Top produtos
-        if any(word in question_lower for word in ['top', 'maiores', 'principais', 'melhores']):
-            return self._get_top_products(question)
-        
-        # Buscar produto
-        if any(word in question_lower for word in ['buscar', 'procurar', 'search', 'find', 'produto']):
-            return self._search_product(question)
-        
-        # Estatísticas
-        if any(word in question_lower for word in ['estatística', 'stats', 'resumo', 'summary']):
-            return self._get_statistics(question)
-        
-        # Resumo por produto
-        if any(word in question_lower for word in ['resumo por produto', 'agrupar por produto', 'group by product']):
-            return self._get_product_summary()
-        
         # Recarregar dados
         if any(word in question_lower for word in ['recarregar', 'atualizar', 'refresh', 'reload']):
             return self.refresh_data()
-        
-        # ===== COMANDOS PARA ABA SECUNDÁRIA =====
-        if any(cmd in question_lower for cmd in ['!secundaria', '!secondary', '!aba2', '!sheet2', '!Leftover']):
-            return self._show_secondary_data_preview()
-        
+                
         # Se não reconhecer o comando
         return self._get_default_response(question)
     
@@ -263,12 +234,13 @@ class QuestionProcessor:
 📋 **Comandos Disponíveis:**
 
 **Consultas de Indicadores (Aba Principal):**
-• `!Indicadores` - Mostra todos os indicadores
-• `!Relatorio [Indicador]` - Resume o indicador
+• `!Indicadores` - Mostra como está o status dos Indicadores.
+• `Explicar [Indicador]`
+• `Quais indicadores existem?` - Mostra todos os Indicadores do SITE
 
-**Consultas da Aba Secundária:**
-• `!Secundaria` - Mostra dados da segunda aba
-• `!Sheet2` - Alias para aba secundária
+**Leftover:**
+• `!Leftover` - Mostra dados da segunda aba
+• `!Sobras` - Alias para aba secundária
 
 **Informações:**
 • `!Ofensores` - Lista maiores ofensores
@@ -282,7 +254,7 @@ class QuestionProcessor:
 
 **Exemplo de uso:**
 _"!Indicadores"_  
-_"!Secundaria"_
+_"!Sobras"_
 _"status"_
 """
     
@@ -330,10 +302,22 @@ _"status"_
         """Mostra prévia da aba principal"""
         if not self.analyzer_main:
             return "❌ Aba principal não disponível"
-        
+
+        # Buscar valor da célula Filter!B1 de forma correta
+        b1_value = self.sheets_client.get_cell_value("Filter!B1")
+        b1_value = b1_value if b1_value else "N/A"
+
+        # Buscar preview da aba principal
         df = self.analyzer_main.get_data_preview(24)
         formatted = self._format_dataframe(df)
-        return f"📋 **Indicadores Performance SITE (Aba Principal)**\n```\n{formatted}\n```"
+
+        # Montar retorno
+        return (
+            f"📋 **Indicadores Performance SITE**\n"
+            f"📌 *Resumo do dia: **{b1_value}**\n"
+            f"```\n{formatted}\n```"
+        )
+        
     
     def _show_secondary_data_preview(self) -> str:
         """Mostra prévia da aba secundária"""
@@ -509,10 +493,169 @@ _"status"_
     
     def _get_default_response(self, question: str) -> str:
         return f"""
-❓ Desculpe, não entendi sua pergunta: "{question}"
+                ❓ Desculpe, não entendi sua pergunta: "{question}"
 
-Digite **ajuda** para ver os comandos disponíveis.
-"""
+                Digite **ajuda** para ver os comandos disponíveis.
+                """
+                
+    
+# ======================================================================
+    #  Explicação de Indicadores
+    # ======================================================================
+    def explicar_indicador(self, message_text: str):
+        import logging
+        logging.info("🟦 explicar_indicador() foi chamado!")
+
+        text_low = message_text.lower()
+
+        # Verifica se o usuário pediu explicação
+        if "explica" not in text_low and "lógica" not in text_low and "logica" not in text_low:
+            logging.info("🟨 Não é pedido de explicação.")
+            return None
+
+        logging.info("🟧 Pedido de explicação detectado.")
+
+        try:
+            logging.info("🔎 Buscando aba 'logica' no Google Sheets...")
+            df = self.sheets_client.get_all_data("logica")
+
+            logging.info("🟦 DEBUG — DF LOGICA:")
+            logging.info(df)
+
+            if df is None or df.empty:
+                logging.error("❌ DF 'logica' vazio")
+                return "⚠️ Não consegui carregar a aba 'Logica indicadores'."
+
+            coluna_nome = df.columns[0]
+            coluna_logica = df.columns[1]
+
+            logging.info(f"🟩 DEBUG — Nome da coluna de indicadores: {coluna_nome}")
+            logging.info(f"🟩 DEBUG — Nome da coluna de lógica: {coluna_logica}")
+
+            indicadores = df[coluna_nome].astype(str).str.lower().tolist()
+            logging.info(f"🟨 DEBUG — Indicadores encontrados: {indicadores}")
+
+            encontrado = None
+            for ind in indicadores:
+                if ind in text_low:
+                    encontrado = ind
+                    break
+
+            logging.info(f"🟪 DEBUG — Indicador encontrado: {encontrado}")
+
+            if not encontrado:
+                return "📘 Qual indicador você deseja que eu explique?"
+
+            linha = df.loc[df[coluna_nome].str.lower() == encontrado]
+
+            logging.info(f"🟥 DEBUG — Linha encontrada: {linha}")
+
+            logica = linha.iloc[0][coluna_logica]
+
+            return (
+                f"📘 **Explicação do indicador: {linha.iloc[0][coluna_nome]}**\n\n"
+                f"{logica}"
+            )
+
+        except Exception as e:
+            logging.error(f"❌ Erro explicar_indicador: {e}")
+            return f"❌ Erro ao consultar lógica dos indicadores: {e}"
+        
+            # ======================================================================
+    #  Explicação e listagem de indicadores
+    # ======================================================================
+    def explicar_indicador(self, message_text: str):
+        import logging
+        text_low = message_text.lower()
+
+        # ------------------------------------------------------------------
+        # LISTAR TODOS OS NOMES DOS INDICADORES
+        # ------------------------------------------------------------------
+        if "quais indicadores" in text_low or \
+           "listar indicadores" in text_low or \
+           "todos os indicadores" in text_low and "explica" not in text_low:
+            
+            logging.info("📋 Pedido para listar todos os indicadores.")
+            
+            df = self.sheets_client.get_all_data("logica")
+            if df is None or df.empty:
+                return "⚠️ Não consegui carregar a aba 'Logica indicadores'."
+
+            col_nome = df.columns[0]
+            indicadores = df[col_nome].tolist()
+
+            lista_formatada = "\n".join([f"• {i}" for i in indicadores])
+
+            return f"📋 **Lista de Indicadores Disponíveis:**\n\n{lista_formatada}"
+
+        # ------------------------------------------------------------------
+        # EXPLICAR TODOS OS INDICADORES
+        # ------------------------------------------------------------------
+        if "explica todos" in text_low or \
+           "explicar todos" in text_low or \
+           "explicação de todos" in text_low:
+            
+            logging.info("📘 Pedido para explicar TODOS os indicadores.")
+            
+            df = self.sheets_client.get_all_data("logica")
+            if df is None or df.empty:
+                return "⚠️ Não consegui carregar a aba 'Logica indicadores'."
+
+            col_nome = df.columns[0]
+            col_logica = df.columns[1]
+
+            resposta = "📘 **Explicação de Todos os Indicadores**\n\n"
+
+            for _, row in df.iterrows():
+                nome = row[col_nome]
+                logica = row[col_logica]
+
+                resposta += f"🔹 **{nome}**\n{logica}\n\n" + "—" * 40 + "\n\n"
+
+            return resposta
+
+        # ------------------------------------------------------------------
+        # EXPLICAR INDICADOR ESPECÍFICO
+        # ------------------------------------------------------------------
+        if "explica" not in text_low and "lógica" not in text_low and "logica" not in text_low:
+            return None  # não é pedido de explicação
+
+        logging.info("📘 Pedido de explicação individual detectado.")
+
+        try:
+            df = self.sheets_client.get_all_data("logica")
+            if df is None or df.empty:
+                return "⚠️ Não consegui carregar a aba 'Logica indicadores'."
+
+            col_nome = df.columns[0]
+            col_logica = df.columns[1]
+
+            indicadores = df[col_nome].astype(str).str.lower().tolist()
+
+            encontrado = None
+            for ind in indicadores:
+                if ind in text_low:
+                    encontrado = ind
+                    break
+
+            if not encontrado:
+                return "📘 Qual indicador você deseja que eu explique?"
+
+            linha = df.loc[df[col_nome].str.lower() == encontrado]
+            logica = linha.iloc[0][col_logica]
+
+            return (
+                f"📘 **Explicação do indicador: {linha.iloc[0][col_nome]}**\n\n"
+                f"{logica}"
+            )
+
+        except Exception as e:
+            logging.error(f"❌ Erro explicar_indicador: {e}")
+            return f"❌ Erro ao consultar lógica dos indicadores: {e}"
+
+
+
+
     
     # ======================================================================
     # Métodos de extração
