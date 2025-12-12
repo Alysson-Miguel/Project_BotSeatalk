@@ -249,7 +249,7 @@ class ShopeeDataAnalyzer:
         """
         return list(self.df.columns)
     
-    def get_data_preview(self, n: int = 5) -> pd.DataFrame:
+    def get_data_preview(self, n: int = 23) -> pd.DataFrame:
         """
         Retorna uma prévia dos dados
         
