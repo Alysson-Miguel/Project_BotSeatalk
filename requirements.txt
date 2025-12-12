@@ -3,8 +3,8 @@ Flask==3.0.0
 Flask-CORS==4.0.0
 
 # Data Processing
-pandas==1.5.3
-numpy==1.23.5
+numpy>=1.24.0
+pandas>=2.0.0
 
 # HTTP Client
 requests==2.31.0
