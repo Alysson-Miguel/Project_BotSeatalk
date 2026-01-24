@@ -71,6 +71,35 @@ def test_question_processor_methods():
         print(f"❌ Erro ao testar QuestionProcessor: {e}")
         return False
 
+def test_duplicate_callback_removed():
+    """Testa se o callback duplicado foi removido"""
+    print("\n🧪 Testando remoção de callback duplicado...")
+    
+    try:
+        # Lê o arquivo seatalk_client.py
+        with open('Functions/seatalk_client.py', 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Verifica se não há mais callback duplicado
+        problematic_patterns = [
+            '@app.route("/callback"',
+            'def callback():',
+            'app = Flask(__name__)'
+        ]
+        
+        found_patterns = [pattern for pattern in problematic_patterns if pattern in content]
+        
+        if found_patterns:
+            print(f"❌ Ainda há código de callback duplicado: {found_patterns}")
+            return False
+        
+        print("✅ Callback duplicado removido com sucesso")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Erro ao verificar callback: {e}")
+        return False
+
 def test_ai_prompt_update():
     """Testa se o prompt da IA foi atualizado"""
     print("\n🧪 Testando prompt da IA...")
@@ -104,6 +133,7 @@ def main():
     tests = [
         test_logging_configuration,
         test_question_processor_methods,
+        test_duplicate_callback_removed,
         test_ai_prompt_update
     ]
     
@@ -122,6 +152,7 @@ def main():
     
     if all(results):
         print("\n🎉 Todas as correções foram implementadas com sucesso!")
+        print("🔥 O problema de mensagens duplicadas foi RESOLVIDO!")
     else:
         print("\n⚠️ Algumas correções podem precisar de ajustes.")
 

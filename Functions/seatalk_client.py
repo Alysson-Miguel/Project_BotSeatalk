@@ -4,7 +4,6 @@ Cliente para integração com SeaTalk Open Platform API
 import requests
 import logging
 from typing import Dict
-from flask import Flask, request, jsonify
 from config import Config
 from time import sleep
 
@@ -237,53 +236,6 @@ class SeaTalkClient:
 
 
 # ============================================================
-#  CALLBACK FLASK (fora da classe)
+#  CALLBACK FLASK REMOVIDO - AGORA ESTÁ NO APP.PY
 # ============================================================
-app = Flask(__name__)
-
-@app.route("/callback", methods=["POST"])
-def callback():
-    data = request.json
-    print("Callback recebido:", data)
-
-    # Challenger verification
-    if data.get("event_type") == "event_verification":
-        if data.get("token") == Config.SEATALK_CALLBACK_TOKEN:
-            return jsonify({"seatalk_challenge": data["event"]["seatalk_challenge"]})
-        else:
-            return jsonify({"error": "invalid token"}), 403
-
-    # Mensagem privada
-    if data.get("event_type") == "message_from_bot_subscriber":
-        event = data["event"]
-
-        sender_id = event["sender"]["employee_code"]
-        texto = event["text"]
-
-        print(f"📩 Mensagem privada de {sender_id}: {texto}")
-
-        resposta = f"Recebi sua mensagem: {texto}"
-
-        client = SeaTalkClient()
-        result = client.send_message(sender_id, resposta)
-
-        print("Resposta enviada:", result)
-        return jsonify({"status": "OK"})
-
-    # Mensagem mencionada em grupo
-    if data.get("event_type") == "new_mentioned_message_received_from_group_chat":
-        event = data["event"]
-        group_id = event["group_id"]
-        sender_id = event["message"]["sender"]["seatalk_id"]
-        message_id = event["message"]["message_id"]
-        texto = event["message"]["text"]["plain_text"]
-
-        resposta = f"Olá <mention-tag target=\"seatalk://user?id={sender_id}\"/>, estou aqui! 👋"
-
-        client = SeaTalkClient()
-        result = client.send_group_message(group_id, message_id, resposta, sender_id)
-
-        print("Resposta enviada:", result)
-        return jsonify({"status": "OK"})
-
-    return jsonify({"status": "IGNORED"})
+# O callback foi movido para app.py para evitar duplicação de processamento
