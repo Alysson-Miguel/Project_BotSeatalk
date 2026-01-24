@@ -1,46 +1,49 @@
-# Bot SeaTalk para Análise de Dados da Shopee
+# Bot SeaTalk para Análise de Indicadores de Performance
 
-Este projeto implementa um bot para SeaTalk que se integra com o Google Sheets para fornecer análises de dados de KPI da Shopee. O bot é capaz de responder a perguntas em linguagem natural, como "qual foi o resultado do KPI X ou Y?" ou "quais são os top ofensores de X KPI?", e retornar as respostas diretamente no chat do SeaTalk.
+Este projeto implementa um bot inteligente para SeaTalk que se integra com o Google Sheets para fornecer análises de **indicadores de performance e KPIs** da Shopee. O bot é capaz de responder a perguntas sobre indicadores, explicar suas lógicas, identificar problemas e fornecer insights acionáveis diretamente no chat do SeaTalk.
 
-## Funcionalidades
+## 🚀 Funcionalidades Principais
 
-- **Integração com SeaTalk**: Recebe mensagens e envia respostas através da API do SeaTalk.
+- **🤖 Integração com IA (Groq)**: Utiliza inteligência artificial para responder perguntas complexas sobre indicadores
+- **📊 Análise de Indicadores**: Monitora performance de KPIs como GMV, conversão, CTR, etc.
+- **📋 Explicação de Lógicas**: Explica como cada indicador é calculado e sua importância
+- **🚨 Detecção de Problemas**: Identifica automaticamente indicadores fora do target
+- **📈 Relatórios Inteligentes**: Gera resumos e análises dos maiores ofensores
+- **💬 Interface Natural**: Responde em linguagem natural através do SeaTalk
+- **📱 Suporte Multi-Aba**: Trabalha com múltiplas planilhas (indicadores principais e leftover)
+- **🔄 Atualização em Tempo Real**: Conecta-se ao Google Sheets para dados sempre atualizados
 
-- **Leitura de Google Sheets**: Conecta-se a uma planilha Google Sheets para ler os dados de vendas em tempo real.
-
-- **Análise de Dados com Pandas**: Utiliza a biblioteca `pandas` para realizar cálculos e análises, como:
-
-- **Processamento de Linguagem Natural (Simples)**: Interpreta perguntas comuns dos usuários para acionar as análises correspondentes.
-
-- **Servidor Flask**: Expõe um endpoint de webhook para a comunicação com o SeaTalk.
-
-- **Configuração Flexível**: Utiliza variáveis de ambiente para facilitar a configuração de credenciais e outros parâmetros.
-
-## Estrutura do Projeto
+## 📁 Estrutura do Projeto
 
 ```
 /shopee_seatalk_bot
-|-- bot.py                    # Aplicação principal Flask (servidor do bot)
-|-- config.py                 # Módulo de configuração
-|-- data_analyzer.py          # Lógica de análise de dados com Pandas
-|-- question_processor.py     # Processador de perguntas do usuário
-|-- seatalk_client.py         # Cliente para a API do SeaTalk
-|-- sheets_client.py          # Cliente para a API do Google Sheets
-|-- requirements.txt          # Dependências do Python
-|-- .env.example              # Arquivo de exemplo para variáveis de ambiente
-|-- README.md                 # Este arquivo
+|-- app.py                    # 🚀 Aplicação principal Flask (servidor do bot)
+|-- config.py                 # ⚙️ Módulo de configuração e variáveis de ambiente
+|-- AI/
+|   |-- groq_client.py        # 🤖 Cliente para integração com IA Groq
+|-- Functions/
+|   |-- question_processor.py # 🧠 Processador inteligente de perguntas sobre indicadores
+|   |-- seatalk_client.py     # 💬 Cliente para comunicação com API do SeaTalk
+|   |-- sheets_client.py      # 📊 Cliente para leitura do Google Sheets
+|   |-- data_analyzer.py      # 📈 Analisador de dados e indicadores
+|-- requirements.txt          # 📦 Dependências do Python
+|-- credentials.json          # 🔐 Credenciais do Google Sheets (não versionado)
+|-- .env                      # 🔧 Variáveis de ambiente (não versionado)
+|-- README.md                 # 📖 Este arquivo
+|-- test_corrections.py       # 🧪 Script de testes das correções
 ```
 
 ## Guia de Instalação e Configuração
 
 Siga os passos abaixo para configurar e executar o bot em seu ambiente.
 
-### 1. Pré-requisitos
+### 1. 📋 Pré-requisitos
 
-- Python 3.8 ou superior.
-- Conta no SeaTalk com permissões de administrador para criar um app.
-- Conta no Google Cloud Platform (GCP) para configurar a API do Google Sheets.
-- Uma planilha no Google Sheets com os dados da Shopee.
+- **Python 3.8+** - Linguagem de programação
+- **Conta SeaTalk** - Com permissões de administrador para criar apps
+- **Google Cloud Platform** - Para configurar API do Google Sheets  
+- **Planilha Google Sheets** - Com dados dos indicadores organizados
+- **Conta Groq** - Para funcionalidades de IA (opcional mas recomendado)
 
 ### 2. Instalação das Dependências
 
@@ -71,59 +74,204 @@ pip install --upgrade -r requirements.txt
 5.  **Compartilhe a Planilha**: Abra o arquivo `credentials.json` e copie o email da conta de serviço (campo `client_email`). Vá até sua planilha no Google Sheets, clique em "Share" e cole este email, dando permissão de "Editor".
 6.  **Obtenha o ID da Planilha**: O ID da sua planilha está na URL. Por exemplo, em `https://docs.google.com/spreadsheets/d/ESTE_E_O_ID/edit`, copie o valor correspondente.
 
-### 5. Configuração do Ambiente
+### 5. 🔧 Configuração do Ambiente
 
-Crie um arquivo `.env` na raiz do projeto (copiando o `.env.example`) e preencha com as credenciais obtidas:
+Crie um arquivo `.env` na raiz do projeto com as seguintes variáveis:
 
 ```ini
-# SeaTalk Configuration
+# 💬 SeaTalk Configuration
 SEATALK_APP_ID=seu_app_id_aqui
 SEATALK_APP_SECRET=seu_app_secret_aqui
 SEATALK_CALLBACK_TOKEN=seu_token_de_verificacao_aqui
 
-# Google Sheets Configuration
+# 📊 Google Sheets Configuration
 GOOGLE_SHEETS_CREDENTIALS_FILE=credentials.json
 GOOGLE_SHEET_ID=seu_id_da_planilha_aqui
+GOOGLE_SHEET_RANGE=Sheet1!A1:Z1000
+GOOGLE_SHEET_RANGE_2=Leftover!A1:Z1000
 
-# Server Configuration
+# 🤖 IA Configuration (Opcional)
+GROQ_API_KEY=sua_chave_groq_aqui
+
+# 🌐 Server Configuration
 HOST=0.0.0.0
 PORT=5000
 DEBUG=True
 ```
 
-### 6. Execução do Bot
+> **💡 Dica**: Para obter uma chave Groq gratuita, acesse [console.groq.com](https://console.groq.com)
 
-Com tudo configurado, inicie o servidor Flask:
+### 6. 🚀 Execução do Bot
+
+Com tudo configurado, inicie o servidor:
 
 ```bash
-python bot.py
+python app.py
 ```
 
-Se tudo estiver correto, você verá mensagens indicando que o bot foi iniciado com sucesso. Use o `ngrok` para expor a porta local e finalize a configuração do callback no SeaTalk.
+Se tudo estiver correto, você verá:
+```
+🚀 Iniciando Bot SeaTalk...
+✅ Groq inicializado!
+✅ Sheets e Processor PRONTOS!
+🌐 Servidor rodando em 0.0.0.0:5000
+```
 
-## Como Usar o Bot
+Use o `ngrok` para expor a porta local:
+```bash
+ngrok http 5000
+```
+
+Finalize a configuração do callback no SeaTalk com a URL do ngrok.
+
+## 💬 Como Usar o Bot
 
 Após adicionar o bot a um chat no SeaTalk, você pode interagir com ele enviando mensagens. Digite `ajuda` para ver a lista completa de comandos disponíveis.
 
-**Exemplos de Comandos:**
+### 📋 Comandos Principais
 
-- `quantidade total`
-- `quantidade total smartphone xiaomi`
-- `top 5 produtos`
-- `buscar notebook gamer`
-- `estatísticas da coluna preço`
-- `colunas`
-- `recarregar dados`
+**🎯 Consultas de Indicadores:**
+- `!Indicadores` - Mostra status atual dos indicadores de performance
+- `!Fora do target` - Lista indicadores que estão fora do target
+- `!Ofensores` - Mostra os piores indicadores (maiores ofensores)
 
-## Como Testar Localmente
+**📘 Explicações e Lógicas:**
+- `Explicar [Nome do Indicador]` - Explica como um indicador específico é calculado
+- `Quais indicadores existem?` - Lista todos os indicadores disponíveis
+- `Explica todos` - Mostra explicação completa de todos os indicadores
 
-Você pode testar o processamento de perguntas sem precisar do SeaTalk, enviando requisições para o endpoint `/test`:
+**📊 Dados Secundários:**
+- `!Leftover` - Mostra dados da aba secundária (sobras/leftover)
+- `!Sobras` - Alias para leftover
+
+**🔧 Utilitários:**
+- `status` - Verifica status de conexões e dados
+- `colunas` - Lista colunas disponíveis nas planilhas
+- `recarregar` - Atualiza dados do Google Sheets
+- `ajuda` - Mostra lista completa de comandos
+
+### 💡 Exemplos de Uso
+
+```
+Usuário: !Indicadores
+Bot: 📋 Indicadores Performance SITE
+     📌 Resumo do dia: 24/01/2026
+     [Tabela com status dos indicadores]
+
+
+Usuário: !Fora do target
+Bot: 🚨 Indicadores Fora do Target:
+     [Lista dos indicadores problemáticos]
+```
+
+## 🧪 Como Testar
+
+### Teste Local (Sem SeaTalk)
+Você pode testar o processamento de perguntas localmente:
 
 ```bash
 curl -X POST -H "Content-Type: application/json" \
--d '{"question": "qual a quantidade total?"}' \
+-d '{"question": "!Indicadores"}' \
 http://127.0.0.1:5000/test
 ```
-## ngrok http 5000 -> Inicia o Server
-## python bot.py -> Inicia o Robo
-Gs
+
+### Teste de Correções
+Execute o script de testes para verificar se tudo está funcionando:
+
+```bash
+python test_corrections.py
+```
+
+### Comandos de Inicialização
+```bash
+# Terminal 1: Inicia o ngrok
+ngrok http 5000
+
+# Terminal 2: Inicia o bot
+python app.py
+```
+
+## 🔧 Estrutura das Planilhas
+
+### Aba Principal (Indicadores)
+Deve conter colunas como:
+- Nome do Indicador
+- Valor Atual  
+- Target/Meta
+- Status (Verde/Amarelo/Vermelho)
+- Período
+
+### Aba "Logica indicadores" 
+Para explicações automáticas:
+- Coluna A: Nome do Indicador
+- Coluna B: Explicação/Lógica de cálculo
+
+### Aba Secundária (Leftover)
+Dados complementares ou sobras do dia anterior.
+
+## 🆕 Melhorias Implementadas
+
+### ✅ Correções de Bugs
+- **Mensagens duplicadas**: Removido callback conflitante
+- **Logs duplicados**: Configuração otimizada de logging  
+- **IA respondendo múltiplas vezes**: Lógica de fallback refinada
+- **Métodos obsoletos**: Removidos métodos focados em produtos
+
+### 🚀 Novas Funcionalidades  
+- **Foco em indicadores**: Sistema adaptado para KPIs ao invés de produtos
+- **Explicações automáticas**: Integração com aba "Logica indicadores"
+- **Detecção de problemas**: Identifica indicadores fora do target
+- **IA contextual**: Prompt otimizado para análise de indicadores
+- **Comandos intuitivos**: Interface mais amigável e clara
+
+### 🎯 Otimizações
+- **Performance**: Delays reduzidos no envio de mensagens
+- **Confiabilidade**: Melhor tratamento de erros
+- **Usabilidade**: Comandos mais intuitivos e help melhorado
+
+## 🚨 Troubleshooting
+
+### Problema: Bot responde 2 vezes
+✅ **Resolvido**: Callback duplicado foi removido do `seatalk_client.py`
+
+### Problema: Logs duplicados  
+✅ **Resolvido**: Configuração de logging otimizada no `app.py`
+
+### Problema: IA responde mesmo quando não deveria
+✅ **Resolvido**: Lógica de fallback refinada
+
+### Erro: "Não consegui carregar dados"
+- Verifique se `GOOGLE_SHEET_ID` está correto
+- Confirme se `credentials.json` existe e tem permissões
+- Teste a conexão com `status`
+
+### Erro: "IA não disponível"
+- Verifique se `GROQ_API_KEY` está configurada
+- Confirme se a chave é válida no console.groq.com
+
+## 🛠️ Tecnologias Utilizadas
+
+- **Python 3.8+** - Linguagem principal
+- **Flask** - Framework web para webhooks
+- **Pandas** - Análise e manipulação de dados
+- **Google Sheets API** - Integração com planilhas
+- **SeaTalk API** - Comunicação com chat corporativo
+- **Groq API** - Inteligência artificial (Llama 3.3 70B)
+- **Requests** - Cliente HTTP para APIs
+
+## 📈 Roadmap Futuro
+
+- [ ] Dashboard web para visualização de indicadores
+- [ ] Alertas proativos para indicadores críticos  
+- [ ] Integração com mais fontes de dados
+- [ ] Análises preditivas com IA
+- [ ] Relatórios automatizados por email
+- [ ] Suporte a múltiplas linguagens
+
+## 👥 Contribuição
+
+Este projeto foi desenvolvido para automatizar o monitoramento de indicadores de performance da Shopee, proporcionando insights rápidos e acionáveis através de uma interface conversacional intuitiva.
+
+---
+
+**Desenvolvido com ❤️ para otimizar o acompanhamento de KPIs da Shopee**
