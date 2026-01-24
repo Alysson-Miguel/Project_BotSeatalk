@@ -13,7 +13,7 @@ from AI.groq_client import GroqClient
 import os
 
 # ==================================
-# CONFIG LOGGING COM PRETTY PRINT
+# CONFIG LOGGING COM PRETTY PRINT (SEM DUPLICAÇÃO)
 # ==================================
 class PrettyFormatter(logging.Formatter):
     def format(self, record):
@@ -21,13 +21,15 @@ class PrettyFormatter(logging.Formatter):
             record.msg = pprint.pformat(record.msg, indent=2)
         return super().format(record)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-for handler in logging.getLogger().handlers:
-    handler.setFormatter(PrettyFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+# Configura logging apenas se ainda não foi configurado
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(PrettyFormatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 
 logger = logging.getLogger(__name__)
 
@@ -256,13 +258,22 @@ def process_question(message_text: str) -> str:
         logger.info(f"🤔 Processando pergunta: '{message_text}'")
         logger.info(f"📊 Processor ready: {question_processor.is_ready if question_processor else 'N/A'}")
         
+        # Verifica se deve usar IA ANTES de processar
         use_ai_for_complex = groq_client and groq_client.should_use_ai(message_text)
-
+        
         if question_processor and question_processor.is_ready:
             logger.info("✅ Usando question_processor")
             response = question_processor.process_question(message_text)
-            if should_fallback_to_ai(response) or use_ai_for_complex:
+            
+            # Só usa IA se a resposta indica que não entendeu OU se é pergunta complexa
+            if should_fallback_to_ai(response):
+                logger.info("🤖 Fazendo fallback para IA (não entendeu)")
                 response = generate_ai_response(message_text, response)
+            elif use_ai_for_complex and not response.startswith("📋") and not response.startswith("📊"):
+                # Só usa IA para perguntas complexas se não foi uma resposta de dados estruturados
+                logger.info("🤖 Usando IA para pergunta complexa")
+                response = generate_ai_response(message_text, None)
+                
         elif question_processor:
             logger.warning("⚠️ Processor existe mas não está pronto")
             response = "⌛ Ainda estou carregando os dados. Tente novamente em instantes."

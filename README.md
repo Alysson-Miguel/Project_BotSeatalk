@@ -1,20 +1,19 @@
 # Bot SeaTalk para Análise de Dados da Shopee
 
-Este projeto implementa um bot para SeaTalk que se integra com o Google Sheets para fornecer análises de dados de vendas da Shopee. O bot é capaz de responder a perguntas em linguagem natural, como "qual a quantidade total de smartphones?" ou "quais são os top 10 produtos?", e retornar as respostas diretamente no chat do SeaTalk.
+Este projeto implementa um bot para SeaTalk que se integra com o Google Sheets para fornecer análises de dados de KPI da Shopee. O bot é capaz de responder a perguntas em linguagem natural, como "qual foi o resultado do KPI X ou Y?" ou "quais são os top ofensores de X KPI?", e retornar as respostas diretamente no chat do SeaTalk.
 
 ## Funcionalidades
 
 - **Integração com SeaTalk**: Recebe mensagens e envia respostas através da API do SeaTalk.
+
 - **Leitura de Google Sheets**: Conecta-se a uma planilha Google Sheets para ler os dados de vendas em tempo real.
+
 - **Análise de Dados com Pandas**: Utiliza a biblioteca `pandas` para realizar cálculos e análises, como:
-  - Cálculo de quantidade total (geral ou por produto).
-  - Cálculo de média ponderada.
-  - Geração de resumos por produto ou período.
-  - Identificação de "top N" produtos.
-  - Busca por produtos específicos.
-  - Estatísticas descritivas de colunas.
+
 - **Processamento de Linguagem Natural (Simples)**: Interpreta perguntas comuns dos usuários para acionar as análises correspondentes.
+
 - **Servidor Flask**: Expõe um endpoint de webhook para a comunicação com o SeaTalk.
+
 - **Configuração Flexível**: Utiliza variáveis de ambiente para facilitar a configuração de credenciais e outros parâmetros.
 
 ## Estrutura do Projeto

@@ -192,6 +192,7 @@ class QuestionProcessor:
         
         question_lower = question.lower().strip()
         
+        # Primeiro verifica explicações de indicadores
         explicacao = self.explicar_indicador(question)
         if explicacao:
             return explicacao
@@ -204,16 +205,28 @@ class QuestionProcessor:
         if any(cmd in question_lower for cmd in ['colunas', 'columns', 'campos', 'fields']):
             return self._list_columns()
         
-        # ===== COMANDOS PARA ABA PRINCIPAL =====
+        # Status do sistema
+        if any(cmd in question_lower for cmd in ['status', 'estado']):
+            return self._get_sheets_status()
+        
+        # ===== COMANDOS PARA ABA PRINCIPAL (INDICADORES) =====
         
         # Prévia dos dados / Indicadores
         if any(cmd in question_lower for cmd in ['!indicadores', '!indicador', '!performance', '!table']):
             return self._show_data_preview()
         
+        # Indicadores fora do target
+        if any(cmd in question_lower for cmd in ['!fora do target', '!fora target', 'fora do target']):
+            return self._get_indicators_out_of_target()
+        
+        # Maiores ofensores
+        if any(cmd in question_lower for cmd in ['!ofensores', 'ofensores', 'piores indicadores']):
+            return self._get_worst_indicators()
+        
         # ===== COMANDOS PARA ABA SECUNDÁRIA =====
         
         # Prévia da aba secundária
-        if any(cmd in question_lower for cmd in ['!Leftover', '!sobras', '!leftover']): # Ainda da mais uma palavra pra leftover
+        if any(cmd in question_lower for cmd in ['!leftover', '!sobras', '!leftover']): 
             return self._show_secondary_data_preview()
         
         # ===== COMANDOS GERAIS =====
@@ -234,29 +247,101 @@ class QuestionProcessor:
 📋 **Comandos Disponíveis:**
 
 **Consultas de Indicadores (Aba Principal):**
-• `!Indicadores` - Mostra como está o status dos Indicadores.
-• `Explicar [Indicador]`
-• `Quais indicadores existem?` - Mostra todos os Indicadores do SITE
+• `!Indicadores` - Mostra status dos Indicadores de Performance
+• `!Fora do target` - Indicadores que estão fora do target
+• `!Ofensores` - Lista maiores ofensores (piores indicadores)
+• `Explicar [Indicador]` - Explica a lógica de um indicador específico
+• `Quais indicadores existem?` - Lista todos os indicadores disponíveis
+• `Explica todos` - Mostra explicação de todos os indicadores
 
 **Leftover:**
-• `!Leftover` - Mostra dados da segunda aba
+• `!Leftover` - Mostra dados da segunda aba (sobras)
 • `!Sobras` - Alias para aba secundária
 
-**Informações:**
-• `!Ofensores` - Lista maiores ofensores
-• `!Fora do target` - Indicadores fora do target
-• `status` - Status de todas as abas
-
-**Utilitários:**
-• `recarregar` - Atualiza dados do Google Sheets
+**Informações do Sistema:**
+• `status` - Status de todas as abas e conexões
 • `colunas` - Lista colunas disponíveis
+• `recarregar` - Atualiza dados do Google Sheets
 • `ajuda` - Mostra esta mensagem
 
 **Exemplo de uso:**
 _"!Indicadores"_  
-_"!Sobras"_
+_"!Fora do target"_
+_"Explicar GMV"_
 _"status"_
 """
+    
+    def _get_indicators_out_of_target(self) -> str:
+        """Retorna indicadores que estão fora do target"""
+        if not self.analyzer_main:
+            return "❌ Aba principal não disponível"
+        
+        try:
+            df = self.analyzer_main.df
+            
+            # Procura por colunas que indicam target ou status
+            target_cols = [col for col in df.columns if any(word in col.lower() 
+                          for word in ['target', 'meta', 'objetivo', 'status', 'resultado'])]
+            
+            if not target_cols:
+                return "⚠️ Não encontrei colunas de target/status nos dados"
+            
+            # Filtra indicadores fora do target (assumindo que há uma coluna de status)
+            status_col = target_cols[0]  # Usa a primeira coluna encontrada
+            
+            # Procura por valores que indicam "fora do target"
+            out_of_target = df[df[status_col].astype(str).str.contains(
+                'vermelho|red|fora|ruim|baixo|crítico', case=False, na=False)]
+            
+            if out_of_target.empty:
+                return "✅ **Todos os indicadores estão dentro do target!**"
+            
+            formatted = self._format_dataframe(out_of_target)
+            return f"🚨 **Indicadores Fora do Target:**\n```\n{formatted}\n```"
+            
+        except Exception as e:
+            logger.error(f"Erro em _get_indicators_out_of_target: {e}", exc_info=True)
+            return f"❌ Erro ao buscar indicadores fora do target: {str(e)}"
+    
+    def _get_worst_indicators(self) -> str:
+        """Retorna os piores indicadores (maiores ofensores)"""
+        if not self.analyzer_main:
+            return "❌ Aba principal não disponível"
+        
+        try:
+            df = self.analyzer_main.df
+            
+            # Procura por colunas numéricas que podem indicar performance
+            numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+            
+            if not numeric_cols:
+                # Se não há colunas numéricas, mostra baseado em status
+                status_cols = [col for col in df.columns if any(word in col.lower() 
+                              for word in ['status', 'resultado', 'performance'])]
+                
+                if status_cols:
+                    status_col = status_cols[0]
+                    worst = df[df[status_col].astype(str).str.contains(
+                        'vermelho|red|crítico|ruim', case=False, na=False)]
+                    
+                    if worst.empty:
+                        return "✅ **Nenhum indicador crítico encontrado!**"
+                    
+                    formatted = self._format_dataframe(worst.head(10))
+                    return f"🔴 **Indicadores Críticos:**\n```\n{formatted}\n```"
+                
+                return "⚠️ Não consegui identificar indicadores problemáticos"
+            
+            # Se há colunas numéricas, ordena pela primeira (assumindo que menor é pior)
+            main_metric = numeric_cols[0]
+            worst = df.nsmallest(10, main_metric)
+            
+            formatted = self._format_dataframe(worst)
+            return f"📉 **Top 10 Piores Indicadores (por {main_metric}):**\n```\n{formatted}\n```"
+            
+        except Exception as e:
+            logger.error(f"Erro em _get_worst_indicators: {e}", exc_info=True)
+            return f"❌ Erro ao buscar piores indicadores: {str(e)}"
     
     def _get_sheets_status(self) -> str:
         """Retorna o status de todas as abas"""
@@ -330,238 +415,20 @@ _"status"_
         ontem_formatado = ontem.strftime("%d-%m-%y")
         return f"📋 **Resumo Leftover {ontem_formatado}**\n```\n{formatted}\n```"
     
-    def _get_total_quantity(self, question: str) -> str:
-        """Calcula quantidade total (usa aba principal por padrão)"""
-        analyzer = self.analyzer_main
-        
-        if not analyzer:
-            return "❌ Aba principal não disponível"
-        
-        try:
-            product_name = self._extract_product_name(question)
-            total = analyzer.get_total_quantity(product_name)
-            if product_name:
-                return f"📦 **Quantidade total de '{product_name}':** {total:,.0f}"
-            else:
-                return f"📦 **Quantidade total geral:** {total:,.0f}"
-        except Exception as e:
-            logger.error(f"Erro em _get_total_quantity: {e}", exc_info=True)
-            return f"❌ Erro ao calcular quantidade total: {str(e)}"
-    
-    def _get_weighted_average(self, question: str) -> str:
-        analyzer = self.analyzer_main
-        if not analyzer:
-            return "❌ Aba principal não disponível"
-        
-        try:
-            columns = analyzer.get_column_names()
-            value_col = None
-            weight_col = None
-            
-            for col in columns:
-                if col.lower() in question.lower():
-                    if not value_col:
-                        value_col = col
-                    elif not weight_col:
-                        weight_col = col
-            
-            if not value_col or not weight_col:
-                return "❌ Especifique as colunas para calcular a média ponderada.\nEx: 'média ponderada de preço por quantidade'"
-            
-            avg = analyzer.get_weighted_average(value_col, weight_col)
-            return f"📊 **Média ponderada de '{value_col}' por '{weight_col}':** {avg:,.2f}"
-        
-        except Exception as e:
-            logger.error(f"Erro em _get_weighted_average: {e}", exc_info=True)
-            return f"❌ Erro ao calcular média ponderada: {str(e)}"
-    
-    def _get_top_products(self, question: str) -> str:
-        analyzer = self.analyzer_main
-        if not analyzer:
-            return "❌ Aba principal não disponível"
-        
-        try:
-            n = self._extract_number(question) or 10
-            top_products = analyzer.get_top_products(n)
-            
-            if top_products.empty:
-                return "❌ Nenhum produto encontrado."
-            
-            product_col = analyzer._find_product_column()
-            qty_col = [col for col in top_products.columns if 'quant' in col.lower()][0]
-            
-            response = f"🏆 **Top {n} Produtos:**\n\n"
-            for idx, row in top_products.iterrows():
-                response += f"{idx + 1}. **{row[product_col]}**: {row[qty_col]:,.0f}\n"
-            
-            return response
-        
-        except Exception as e:
-            logger.error(f"Erro em _get_top_products: {e}", exc_info=True)
-            return f"❌ Erro ao obter top produtos: {str(e)}"
-    
-    def _search_product(self, question: str) -> str:
-        analyzer = self.analyzer_main
-        if not analyzer:
-            return "❌ Aba principal não disponível"
-        
-        try:
-            product_name = self._extract_product_name(question)
-            
-            if not product_name:
-                return "❌ Especifique o nome do produto.\nEx: 'buscar notebook'"
-            
-            results = analyzer.search_product(product_name)
-            
-            if results.empty:
-                return f"❌ Nenhum produto encontrado com '{product_name}'."
-            
-            qty_col = [col for col in results.columns if 'quant' in col.lower()][0]
-            total_qty = results[qty_col].sum()
-            
-            formatted = self._format_dataframe(results.head(5))
-            
-            response = (
-                f"🔍 **Resultados para '{product_name}':**\n\n"
-                f"• **Total de registros:** {len(results)}\n"
-                f"• **Quantidade total:** {total_qty:,.0f}\n\n"
-                f"```\n{formatted}\n```"
-            )
-            return response
-        
-        except Exception as e:
-            logger.error(f"Erro em _search_product: {e}", exc_info=True)
-            return f"❌ Erro ao buscar produto: {str(e)}"
-    
-    def _get_statistics(self, question: str) -> str:
-        analyzer = self.analyzer_main
-        if not analyzer:
-            return "❌ Aba principal não disponível"
-        
-        try:
-            columns = analyzer.get_column_names()
-            column_name = next((col for col in columns if col.lower() in question.lower()), None)
-            
-            if not column_name:
-                column_name = next(col for col in columns if 'quant' in col.lower())
-            
-            stats = analyzer.get_statistics(column_name)
-            
-            response = (
-                f"📊 **Estatísticas de '{column_name}':**\n\n"
-                f"• **Total:** {stats['total']:,.2f}\n"
-                f"• **Média:** {stats['média']:,.2f}\n"
-                f"• **Mediana:** {stats['mediana']:,.2f}\n"
-                f"• **Mínimo:** {stats['mínimo']:,.2f}\n"
-                f"• **Máximo:** {stats['máximo']:,.2f}\n"
-                f"• **Desvio Padrão:** {stats['desvio_padrão']:,.2f}\n"
-                f"• **Contagem:** {stats['contagem']}\n"
-            )
-            
-            return response
-        
-        except Exception as e:
-            logger.error(f"Erro em _get_statistics: {e}", exc_info=True)
-            return f"❌ Erro ao calcular estatísticas: {str(e)}"
-    
-    def _get_product_summary(self) -> str:
-        analyzer = self.analyzer_main
-        if not analyzer:
-            return "❌ Aba principal não disponível"
-        
-        try:
-            summary = analyzer.get_summary_by_product()
-            
-            if summary.empty:
-                return "❌ Nenhum dado disponível."
-            
-            product_col = analyzer._find_product_column()
-            qty_col = [col for col in summary.columns if 'quant' in col.lower()][0]
-            
-            response = "📊 **Resumo por Produto:**\n\n"
-            for idx, row in summary.head(10).iterrows():
-                response += f"• **{row[product_col]}**: {row[qty_col]:,.0f}\n"
-            
-            if len(summary) > 10:
-                response += f"\n_... e mais {len(summary) - 10} produtos_"
-            
-            return response
-        
-        except Exception as e:
-            logger.error(f"Erro em _get_product_summary: {e}", exc_info=True)
-            return f"❌ Erro ao gerar resumo: {str(e)}"
-    
     def _get_default_response(self, question: str) -> str:
         return f"""
-                ❓ Desculpe, não entendi sua pergunta: "{question}"
+❓ Desculpe, não entendi sua pergunta: "{question}"
 
-                Digite **ajuda** para ver os comandos disponíveis.
-                """
+Digite **ajuda** para ver os comandos disponíveis.
+
+💡 **Dicas rápidas:**
+• `!Indicadores` - Ver status dos indicadores
+• `!Fora do target` - Ver indicadores problemáticos  
+• `Explicar [nome do indicador]` - Entender um indicador
+"""
                 
     
-# ======================================================================
-    #  Explicação de Indicadores
     # ======================================================================
-    def explicar_indicador(self, message_text: str):
-        import logging
-        logging.info("🟦 explicar_indicador() foi chamado!")
-
-        text_low = message_text.lower()
-
-        # Verifica se o usuário pediu explicação
-        if "explica" not in text_low and "lógica" not in text_low and "logica" not in text_low:
-            logging.info("🟨 Não é pedido de explicação.")
-            return None
-
-        logging.info("🟧 Pedido de explicação detectado.")
-
-        try:
-            logging.info("🔎 Buscando aba 'logica' no Google Sheets...")
-            df = self.sheets_client.get_all_data("logica")
-
-            logging.info("🟦 DEBUG — DF LOGICA:")
-            logging.info(df)
-
-            if df is None or df.empty:
-                logging.error("❌ DF 'logica' vazio")
-                return "⚠️ Não consegui carregar a aba 'Logica indicadores'."
-
-            coluna_nome = df.columns[0]
-            coluna_logica = df.columns[1]
-
-            logging.info(f"🟩 DEBUG — Nome da coluna de indicadores: {coluna_nome}")
-            logging.info(f"🟩 DEBUG — Nome da coluna de lógica: {coluna_logica}")
-
-            indicadores = df[coluna_nome].astype(str).str.lower().tolist()
-            logging.info(f"🟨 DEBUG — Indicadores encontrados: {indicadores}")
-
-            encontrado = None
-            for ind in indicadores:
-                if ind in text_low:
-                    encontrado = ind
-                    break
-
-            logging.info(f"🟪 DEBUG — Indicador encontrado: {encontrado}")
-
-            if not encontrado:
-                return "📘 Qual indicador você deseja que eu explique?"
-
-            linha = df.loc[df[coluna_nome].str.lower() == encontrado]
-
-            logging.info(f"🟥 DEBUG — Linha encontrada: {linha}")
-
-            logica = linha.iloc[0][coluna_logica]
-
-            return (
-                f"📘 **Explicação do indicador: {linha.iloc[0][coluna_nome]}**\n\n"
-                f"{logica}"
-            )
-
-        except Exception as e:
-            logging.error(f"❌ Erro explicar_indicador: {e}")
-            return f"❌ Erro ao consultar lógica dos indicadores: {e}"
-        
-            # ======================================================================
     #  Explicação e listagem de indicadores
     # ======================================================================
     def explicar_indicador(self, message_text: str):
@@ -571,9 +438,9 @@ _"status"_
         # ------------------------------------------------------------------
         # LISTAR TODOS OS NOMES DOS INDICADORES
         # ------------------------------------------------------------------
-        if "quais indicadores" in text_low or \
-           "listar indicadores" in text_low or \
-           "todos os indicadores" in text_low and "explica" not in text_low:
+        if ("quais indicadores" in text_low or 
+            "listar indicadores" in text_low or 
+            "todos os indicadores" in text_low) and "explica" not in text_low:
             
             logging.info("📋 Pedido para listar todos os indicadores.")
             
@@ -591,9 +458,9 @@ _"status"_
         # ------------------------------------------------------------------
         # EXPLICAR TODOS OS INDICADORES
         # ------------------------------------------------------------------
-        if "explica todos" in text_low or \
-           "explicar todos" in text_low or \
-           "explicação de todos" in text_low:
+        if ("explica todos" in text_low or 
+            "explicar todos" in text_low or 
+            "explicação de todos" in text_low):
             
             logging.info("📘 Pedido para explicar TODOS os indicadores.")
             

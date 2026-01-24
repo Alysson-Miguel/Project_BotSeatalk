@@ -147,7 +147,7 @@ class SeaTalkClient:
         url = "https://openapi.seatalk.io/messaging/v2/single_chat"
         results = []
 
-        for part in parts:
+        for i, part in enumerate(parts):
             payload = {
                 "employee_code": employee_code,
                 "message": {
@@ -161,8 +161,9 @@ class SeaTalkClient:
             result = self._make_request(url, payload, token)
             results.append(result)
 
-            # Agora correto
-            sleep(0.4)
+            # Só adiciona delay se não for a última mensagem
+            if i < len(parts) - 1:
+                sleep(0.3)  # Reduzido de 0.4 para 0.3
 
         return {
             "status": "ok",
@@ -209,7 +210,7 @@ class SeaTalkClient:
 
         results = []
 
-        for part in parts:
+        for i, part in enumerate(parts):
             payload = {
                 "group_id": group_id,
                 "quoted_message_id": message_id,
@@ -224,7 +225,9 @@ class SeaTalkClient:
             result = self._make_request(url, payload, token)
             results.append(result)
 
-            sleep(0.4)  # evita flood
+            # Só adiciona delay se não for a última mensagem
+            if i < len(parts) - 1:
+                sleep(0.3)  # Reduzido de 0.4 para 0.3
 
         return {
             "status": "ok",
